@@ -1,4 +1,4 @@
-//! Catalog JSON types (C3). Semantic ingest (θ, freeze) is a later PR.
+//! Catalog JSON types (C3).
 
 use serde::{Deserialize, Serialize};
 
@@ -157,6 +157,90 @@ impl ErrorTerm {
             | Self::Photometric { term_id, .. } => term_id,
         }
     }
+
+    #[must_use]
+    pub fn enabled(&self) -> bool {
+        match self {
+            Self::Phase { enabled, .. }
+            | Self::Kernel { enabled, .. }
+            | Self::Photometric { enabled, .. } => *enabled,
+        }
+    }
+
+    #[must_use]
+    pub fn frozen(&self) -> bool {
+        match self {
+            Self::Phase { frozen, .. }
+            | Self::Kernel { frozen, .. }
+            | Self::Photometric { frozen, .. } => *frozen,
+        }
+    }
+
+    #[must_use]
+    pub fn scope(&self) -> Scope {
+        match self {
+            Self::Phase { scope, .. }
+            | Self::Kernel { scope, .. }
+            | Self::Photometric { scope, .. } => *scope,
+        }
+    }
+
+    #[must_use]
+    pub fn units(&self) -> &str {
+        match self {
+            Self::Phase { units, .. }
+            | Self::Kernel { units, .. }
+            | Self::Photometric { units, .. } => units,
+        }
+    }
+
+    #[must_use]
+    pub fn bounds(&self) -> Option<[f64; 2]> {
+        match self {
+            Self::Phase { bounds, .. }
+            | Self::Kernel { bounds, .. }
+            | Self::Photometric { bounds, .. } => *bounds,
+        }
+    }
+
+    #[must_use]
+    pub fn init(&self) -> &InitSpec {
+        match self {
+            Self::Phase { init, .. }
+            | Self::Kernel { init, .. }
+            | Self::Photometric { init, .. } => init,
+        }
+    }
+
+    #[must_use]
+    pub fn prior(&self) -> &PriorSpec {
+        match self {
+            Self::Phase { prior, .. }
+            | Self::Kernel { prior, .. }
+            | Self::Photometric { prior, .. } => prior,
+        }
+    }
+
+    #[must_use]
+    pub fn field_basis(&self) -> Option<&FieldBasis> {
+        match self {
+            Self::Phase { field_basis, .. } => Some(field_basis),
+            Self::Kernel { field_basis, .. } => field_basis.as_ref(),
+            Self::Photometric { .. } => None,
+        }
+    }
+}
+
+impl InitMethod {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Zero => "zero",
+            Self::FluxSum => "flux_sum",
+            Self::DefocusMoment => "defocus_moment",
+            Self::MoffatFwhm => "moffat_fwhm",
+        }
+    }
 }
 
 /// Named linear grouping of catalog terms; v1 ships with a null sensitivity matrix.
@@ -183,31 +267,4 @@ pub struct Catalog {
     pub terms: Vec<ErrorTerm>,
     pub bundles: Vec<Bundle>,
     pub fit_schedule: Vec<FitScheduleStep>,
-}
-
-impl Catalog {
-    /// Structural checks only (schema version, ids). Semantic θ ingest is C3/C4.
-    pub fn ingest(self) -> Result<Self, crate::error::PsfFieldError> {
-        use crate::types::common::{check_schema_version, check_term_id};
-        check_schema_version(&self.schema_version)?;
-        if self.catalog_id.is_empty() {
-            return Err(crate::error::PsfFieldError::input(
-                crate::error::ErrorModule::Boundary,
-                "catalog_id is empty",
-            ));
-        }
-        for term in &self.terms {
-            check_term_id("term_id", term.term_id())?;
-        }
-        for bundle in &self.bundles {
-            check_term_id("bundle_id", &bundle.bundle_id)?;
-            if bundle.matrix.is_some() {
-                return Err(crate::error::PsfFieldError::input(
-                    crate::error::ErrorModule::Boundary,
-                    "bundle.matrix must be null in v1",
-                ));
-            }
-        }
-        Ok(self)
-    }
 }
