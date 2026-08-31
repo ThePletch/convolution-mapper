@@ -48,13 +48,13 @@ disallow_untyped_defs = true
 disallow_untyped_calls = true
 no_implicit_reexport = true
 mypy_path = "python"
-files = ["python/psf_field", "python/psf_field_core"]
+files = ["python"]
 plugins = ["pydantic.mypy"]
 
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["python/psf_field", "python/psf_field_core"]
+include = ["python"]
 # JSON/YAML objects and runtime ndarray dtypes do not narrow past Unknown.
 reportUnknownArgumentType = "warning"
 reportUnknownVariableType = "warning"
