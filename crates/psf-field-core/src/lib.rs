@@ -9,6 +9,7 @@ pub mod error;
 pub mod eval;
 pub mod fftutil;
 pub mod forward;
+pub mod ingest;
 pub mod jacobian;
 pub mod kernels;
 pub mod lm;
@@ -18,6 +19,8 @@ pub mod stage2;
 pub mod theta;
 pub mod types;
 pub mod zernike;
+
+pub use error::{ErrorCode, ErrorModule, PsfFieldError};
 
 #[cfg(feature = "python")]
 mod python_module;
