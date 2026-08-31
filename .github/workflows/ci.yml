@@ -34,7 +34,7 @@ jobs:
         run: mypy --strict python/psf_field python/psf_field_core
 
       - name: pyright
-        run: pyright python/psf_field python/psf_field_core
+        run: python -m pyright --pythonpath "$(python -c 'import sys; print(sys.executable)')" python/psf_field python/psf_field_core
 
       - name: pytest
         run: pytest -q tests
