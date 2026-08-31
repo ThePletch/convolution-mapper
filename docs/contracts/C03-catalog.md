@@ -5,7 +5,7 @@ The engine never switches on a string like `"coma"`. The catalog maps names to `
 ## C3.1 Catalog file
 
 - JSON, UTF-8. Schema: `schemas/catalog.schema.json`.
-- Required top-level: `schema_version`, `catalog_id`, `terms` (array), `bundles` (array, may be empty), `fit_schedule` (C4.5).
+- Required top-level: `schema_version`, `catalog_id`, `terms` (array), `bundles` (array, may be empty), `fit_schedule` (C4.4).
 - **v1 default catalog id:** `psf_field_v1_default`.
 - Duplicate `term_id` SHALL be rejected.
 
@@ -74,10 +74,21 @@ a(u,v) = \sum_{(i,j) \in \mathrm{terms}} c_{ij}\, u^i v^j
 ```
 PriorSpec = {
   "family": "none" | "gaussian",
-  "mean": f64,      # required if gaussian; on the LOCAL coefficient a (waves or kernel units)
-  "sigma": f64      # > 0; required if gaussian
+  "mean": f64 | "init",   # required if gaussian
+  "sigma": f64,           # > 0; required if gaussian and mean is numeric
+  "sigma_rel": f64        # > 0; required if gaussian and mean is "init"
 }
 ```
+
+If `family="gaussian"` and `mean` is a number, \(\mu=\) `mean` and \(\sigma=\) `sigma` (`sigma_rel` SHALL be omitted).
+
+If `family="gaussian"` and `mean` is the string `"init"`:
+
+\[
+\mu = a_0, \qquad \sigma = \max(\texttt{sigma\_rel}\cdot |a_0|,\; 10^{-3})
+\]
+
+in the term’s units, where \(a_0\) is the value after C3.5 init (stage 1) or the corresponding field coefficient (stage 2, constant basis only). `sigma` SHALL be omitted. Pairing `mean: "init"` with `InitSpec.method: "zero"` SHALL be rejected at ingest (circular).
 
 Gaussian prior contributes extra residual rows in C5 and extra normal-equation terms in C6:
 
@@ -100,7 +111,7 @@ InitSpec = { "method": "zero" | "flux_sum" | "defocus_moment" | "moffat_fwhm" }
 
 | method | Applies to | Formula |
 |---|---|---|
-| `zero` | anything | \(a_0 = 0\) if `prior.family=="none"`; else \(a_0 =\) `prior.mean` |
+| `zero` | anything | \(a_0 = 0\) if `prior.family=="none"`; else \(a_0 =\) numeric `prior.mean` (not `"init"`) |
 | `flux_sum` | flux only (C4.3) | \(F_0 = \max(\texttt{flux\_sum\_adu}, 0)\) |
 | `defocus_moment` | `zernike_2_0` only | C3.5.1 |
 | `moffat_fwhm` | `moffat_seeing` α | C3.5.2 |
@@ -117,13 +128,19 @@ On valid stamp pixels, flux-weighted second moment about `centroid_xy_px`:
 
 where \(\mathrm{stamp}^+ = \max(\mathrm{stamp},0)\), \(w_p=1\) on valid pixels, \(r_p\) in pixels from the stamp centroid.
 
-Let \(\sigma_0^{2}\) be the same moment computed on the **forward model** with all aberrations 0, flux 1, \(b=0\), no kernels, same centroid and `S` (one call to `forward_psf`). Then
+Let \(\sigma_0^{2}\) be the same moment computed on the **forward model** with all aberrations 0, flux 1, \(b=0\), no kernels, same `S` (C9). That second moment about the model centroid is shift-invariant; caching one `forward_psf` per `(PupilSpec, S)` is conformant. Then the positive extra-width estimate (always \(+\), units waves) is
 
 \[
-|a_{2,0}|_0 = \mathrm{clip}\bigl( 0.35 \cdot \max(\sigma_{\mathrm{meas}}^{2} - \sigma_0^{2}, 0) / \max(\sigma_0^{2}, 10^{-12}),\; 0,\; 2.0 \bigr)
+d = \mathrm{clip}\bigl( 0.35 \cdot \max(\sigma_{\mathrm{meas}}^{2} - \sigma_0^{2}, 0) / \max(\sigma_0^{2}, 10^{-12}),\; 0,\; 2.0 \bigr)
 \]
 
-**Sign: always \(+\)**. Units: waves. The factor `0.35` is frozen (maps extra second-moment width to waves for the C10.1 camera; C10.3 requires recovery from this init, not that 0.35 be physically universal). Clip at 2 waves.
+The fitted-parameter init subtracts the known diversity offset (C4.5) so the forward model does not double-count:
+
+\[
+a_{2,0}^{\mathrm{init}} = \mathrm{clip}(d - \texttt{known\_defocus\_waves},\; -2,\; 2)
+\]
+
+The factor `0.35` is frozen (maps extra second-moment width to waves for the C10.1 camera; C10.3 requires recovery from this init, not that 0.35 be physically universal). C10.9 checks that `known_defocus_waves=0.3` with true fitted \(a_{2,0}=0\) inits near 0.
 
 ### C3.5.2 Moffat α from FWHM
 
@@ -203,7 +220,7 @@ Each kernel term has `enabled: bool`. Disabled kernels are omitted from the pipe
 
 ## C3.7 v1 default catalog (complete)
 
-**Normative instance:** `schemas/psf_field_v1_default.catalog.json`. If this section’s table and that file disagree, the JSON file wins.
+**Normative instance:** `schemas/psf_field_v1_default.catalog.json`. The table below is **informative**. If table and file disagree, the JSON file wins. Implementations SHALL load the JSON, not this table.
 
 `catalog_id`: `psf_field_v1_default`. Phase terms all `scope: per_session` for field maps; stage 1 still fits **local** copies (C4).
 
@@ -224,9 +241,9 @@ Each kernel term has `enabled: bool`. Disabled kernels are omitted from the pipe
 | `zernike_4_m2` | 4,-2 | `[[0,0]]` | false | zero | none |
 | `flux` | — | n/a | false | flux_sum | none |
 | `sky` | — | n/a | **true** | zero | none |
-| `moffat_seeing` | kernel moffat_iso | uniform | false | moffat_fwhm | gaussian μ=α₀, σ=0.5 α₀ on α; beta frozen 2.5 |
-| `gaussian_jitter` | kernel gaussian_iso | uniform | false | zero (σ=0.1 px) | gaussian μ=0.1, σ=0.3 px |
-| `charge_diffusion` | kernel gaussian_iso | uniform | false | σ=0.3 px | gaussian μ=0.3, σ=0.1 px |
+| `moffat_seeing` | kernel moffat_iso | uniform | false | moffat_fwhm | gaussian `mean="init"`, `sigma_rel=0.5` on α; beta frozen 2.5 |
+| `gaussian_jitter` | kernel gaussian_iso | uniform | false | zero (numeric prior \(\mu=0.1\) ⇒ \(a_0=0.1\) px) | gaussian μ=0.1, σ=0.3 px |
+| `charge_diffusion` | kernel gaussian_iso | uniform | false | zero (numeric prior \(\mu=0.3\) ⇒ \(a_0=0.3\) px) | gaussian μ=0.3, σ=0.1 px |
 | `linear_drift` | kernel | uniform | **true**, enabled=false | — | — |
 | `field_rotation` | kernel | field law C3.6.4 | **true**, enabled=false | — | — |
 | `periodic_error` | kernel | uniform | **true**, enabled=false | — | — |

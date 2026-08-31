@@ -31,7 +31,7 @@ v1 SHALL NOT implement joint LM across stars. Scoping determines **stage-2 group
 
 ## C4.4 Freeze / unfreeze
 
-`Stage1Options.freeze_mask`: optional `bool` array aligned with the **free** parameter order of C4.1 **after** dropping `enabled=false` terms. If omitted, use each term’s `frozen` flag.
+`Stage1Options.freeze_mask`: optional `bool` array aligned with the **free** parameter order of C4.1 **after** dropping `enabled=false` terms. If omitted, use each term’s `frozen` flag. If present, its length SHALL equal \(n_{\mathrm{free}}\). Length mismatch SHALL raise `InputError`. Implementations SHALL NOT zip-truncate.
 
 `fit_schedule` (catalog) is a list of steps:
 

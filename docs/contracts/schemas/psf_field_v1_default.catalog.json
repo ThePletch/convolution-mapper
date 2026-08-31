@@ -240,7 +240,7 @@
       "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
       "bounds": [0.0, 20.0],
       "init": { "method": "moffat_fwhm" },
-      "prior": { "family": "gaussian", "mean": 1.0, "sigma": 0.5 },
+      "prior": { "family": "gaussian", "mean": "init", "sigma_rel": 0.5 },
       "units": "px"
     },
     {

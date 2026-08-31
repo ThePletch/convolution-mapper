@@ -2,11 +2,13 @@
 
 This directory is the source of truth for the PSF field modeler. It is **not** an implementation plan. Every requirement is written so that a reader can judge correctness from the mathematics, data shapes, and stated numerical tolerances **without writing code**, and so that two independent implementations of the same requirement cannot reasonably diverge by “interpretation.”
 
+Document revision: optional fields listed in NOR.2 keep `schema_version` `"1.0.0"`. The default catalog JSON is normative for C3.7.
+
 ## How to read these documents
 
 1. **`00-normative-conventions.md`** freezes units, coordinate systems, indexing, versioning, and RFC 2119 language. Read it first. Later documents do not redefine those quantities.
 2. Contracts **C1–C11** are independently evaluable. A requirement in one contract that depends on another cites the requirement ID (for example `C1.12`), never an informal paraphrase.
-3. **`schemas/`** holds machine-readable JSON Schema drafts that are 1:1 with the pydantic / serde types. If prose and schema disagree, that is a defect in *this* directory, not a license to improvise.
+3. **`schemas/`** holds machine-readable JSON Schema drafts that are 1:1 with the pydantic / serde types (C1.9.2). If prose and schema disagree, that is a defect in *this* directory, not a license to improvise.
 
 ## RFC 2119 language
 
@@ -49,7 +51,7 @@ A contract set is conceptually correct if all of the following hold. Check them 
 | C9 | `C09-forward-pipeline.md` | Pupil sampling, FFT padding, convolution, resample |
 | C10 | `C10-test-corpus.md` | Synthetic images, ground truth, scoring inequalities |
 | C11 | `C11-lm-selection.md` | Library decision, rejected alternatives, acceptance tests |
-| L | `consistency.md` | Fifteen lemmas for paper evaluation of internal consistency |
+| L | `consistency.md` | Eighteen lemmas for paper evaluation of internal consistency |
 
 ## What v1 delivers
 

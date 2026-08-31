@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/image_meta.schema.json",
+  "title": "ImageMeta",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "exposure_id",
+    "session_id",
+    "n_row",
+    "n_col",
+    "wavelength_m",
+    "pupil_diameter_m",
+    "focal_length_m",
+    "pixel_scale_arcsec",
+    "optical_axis_pixel",
+    "gain_e_per_adu",
+    "read_noise_e",
+    "saturation_adu",
+    "exptime_s"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "exposure_id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "session_id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "n_row": { "type": "integer", "minimum": 1 },
+    "n_col": { "type": "integer", "minimum": 1 },
+    "wavelength_m": { "type": "number", "exclusiveMinimum": 0 },
+    "pupil_diameter_m": { "type": "number", "exclusiveMinimum": 0 },
+    "focal_length_m": { "type": "number", "exclusiveMinimum": 0 },
+    "pixel_scale_arcsec": { "type": "number", "exclusiveMinimum": 0 },
+    "optical_axis_pixel": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "gain_e_per_adu": { "type": "number", "exclusiveMinimum": 0 },
+    "read_noise_e": { "type": "number", "minimum": 0 },
+    "saturation_adu": { "type": "number", "exclusiveMinimum": 0 },
+    "exptime_s": { "type": "number", "exclusiveMinimum": 0 },
+    "known_defocus_waves": { "type": "number", "default": 0 },
+    "pixel_size_m": { "type": ["number", "null"] },
+    "plate_scale_warning": { "type": "boolean" }
+  }
+}

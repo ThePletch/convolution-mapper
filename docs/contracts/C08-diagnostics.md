@@ -25,6 +25,8 @@ Always include the session-median of `|R_ij|` for the pairs:
 
 even if they are not flagged. These four are the documented blur degeneracies.
 
+Session text in `diagnostics.json` / `psf-field report` SHALL state that stage-2 map \(\sigma\) ignore stage-1 off-diagonal covariances (C6.2) and are not \(\chi^2\)-inflated unless `covariance_chi2_scaled` is plotted.
+
 ## C8.3 Stage-2 residual maps
 
 For each phase `term_id`, a table with columns `u`, `v`, `a_stage1`, `a_hat`, `residual`, `sigma`. This is C6.6 `residuals` plus coordinates.
@@ -40,6 +42,12 @@ For each phase `term_id`, a table with columns `u`, `v`, `a_stage1`, `a_hat`, `r
 The candidate list is the set of phase `(n,m)` with \(n \le n_{\max}\), valid C2.1, **not** already enabled in the catalog, plus kernel ids in C3.6 that are `enabled=false`.
 
 Frozen \(n_{\max}=7\). Tilt `(1,±1)` **is** included as a candidate (it diagnoses centroid error leaking into the model).
+
+### C8.4.1a Which stars are scored (`ScoreOptions`)
+
+`ScoreOptions.max_stars` default **50**, allowed `[1, max_selected]`. If more stars converged, score `max_stars` of them: highest SNR **subject to filling as many C1A.12 cells as possible** (same per-cell quota idea as C1A.11.2). Session `weak_phase_all_fraction` is over **scored** stars, not all stars. Setting `max_stars` to the number of converged stars scores everyone.
+
+Score tests SHALL reuse the fitted \(U\) and \(Z^{(k)}\) from the last forward at that \(\theta\). They SHALL NOT rerun LM.
 
 ### C8.4.2 Sensitivity image
 
@@ -74,6 +82,8 @@ Rank candidates by `|score|` descending.
 
 `weak_phase_all` means: look at kernels or amplitude, not more Zernikes.
 
+If the tilt candidate `zernike_1_1` or `zernike_1_m1` has \(\lvert\mathrm{score}\rvert \ge 0.15\), set `centroid_leak_suspect=true` on that star. Selection SHALL NOT enable tilt in \(\theta\) in response.
+
 ## C8.5 Residual spatial structure
 
 Let \(e_{ij}\) be the weighted residual image. Compute the azimuthal RMS in 4 radial bins (equal width from 0 to \(S/2\)). If the ratio of the max bin RMS to the min bin RMS is \(> 2\) and \(\chi^2_{\mathrm{red}}>1.5\), set `structured_residual=true`.
@@ -86,12 +96,21 @@ C2.5 matrix, written once per session as `zernike_gram.json`.
 
 One JSON object per session:
 
-- `per_star`: list of `{star_id, chi2_reduced, structured_residual, scores: [{term_id, score, suggest_add}]}`
+- `per_star`: list of `{star_id, chi2_reduced, structured_residual, centroid_leak_suspect, scores: [{term_id, score, suggest_add}]}`
 - `session_degeneracies`: C8.2
 - `stage2_maps`: C8.3 flags
 - `weak_phase_all_fraction`: fraction of stars with `weak_phase_all`
 
-## C8.8 What diagnostics SHALL NOT do
+## C8.8 Report files (`psf-field report`)
+
+The CLI subcommand `report` (C1B.7) SHALL write, from already-computed C5/C6/C8 numbers (Python SHALL NOT recompute them):
+
+- FITS HDUs `RESID` / `WRESID` (C8.1)
+- `zernike_gram.json` (C8.6)
+- `diagnostics.json` (`DiagnosticsBundle`, including C7.5 flags when an eval grid is supplied)
+- a Markdown summary: `n_converged`, median \(\chi^2_{\mathrm{red}}\), C8.2 pairs, `empty_cells`, extrapolation flags
+
+## C8.9 What diagnostics SHALL NOT do
 
 - Auto-enable catalog terms (no closed-loop catalog mutation).
 - Thresholds other than those above.

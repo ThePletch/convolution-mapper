@@ -12,7 +12,7 @@
 |---|---|---|
 | `stamp_size` | 31 | same allowed set as C1.2.1 |
 | `centroid_xy_px` | `((S-1)/2, (S-1)/2)` | stamp-local; default = centered |
-| `oversample` | 1 | integer in `{1, 2, 4}`. `oversample=k` means return a `kS × kS` array with pixel scale `pixel_scale/k`, using the same C9 pipeline with `pixel_scale` replaced by `pixel_scale/k` and `S` replaced by `k S` (must remain odd: if `kS` even, **forbidden** — so `S=31`, `k=2` is **rejected**). Allowed pairs: `(S,k)` such that `k*S` is odd, i.e. `k` odd. **Therefore frozen allowed oversample is `{1}` only** unless `S` is chosen so `kS` is odd (e.g. `k=3`, `S=21`). v1 default: `oversample=1`. |
+| `oversample` | 1 | Odd positive integer \(k\) such that \(kS\) is odd and \(kS \le 63\). `oversample=k` means return a \(kS \times kS\) array with pixel scale `pixel_scale/k`, using the same C9 pipeline with `pixel_scale` replaced by `pixel_scale/k` and `S` replaced by \(kS\). Even \(kS\) SHALL be rejected. **Frozen default \(k=1\).** Prefer `stamp_size` + `pixel_scale_arcsec_override` for oversampled stamps (below). |
 
 To request a 3× oversampled 21-px stamp, the caller sets `stamp_size=63` and `pixel_scale_arcsec` divided by 3 in a **copy** of `ImageMeta` passed as `grid.pixel_scale_arcsec_override` (optional). If set, C9 uses it. Default: use session `ImageMeta`.
 
@@ -37,15 +37,30 @@ For uniform kernels, use `kernel_globals`. For `field_rotation`, evaluate C3.6.4
 | `kernel_vector` | dict | local kernel params |
 | `field_xy_mm` | `[f64,2]` | echo |
 | `u_v` | `[f64,2]` | normalized field |
-| `image_meta_digest` | string | SHA-256 of canonical JSON of `ImageMeta` + `PupilSpec` + `catalog_id`, hex |
+| `image_meta_digest` | string | C7.4.1 |
 | `catalog_id` | string | |
 | `stage2_schema_version` | string | |
+| `extrapolated` | bool | C7.5 |
+| `outside_unit_square` | bool | C7.5 |
+| `outside_hull` | bool | C7.5 |
 
 Provenance: a consumer SHALL be able to reproduce `psf` by calling `forward_psf` with `zernike_vector` ∪ photometric ∪ kernels. C10.7 checks \(\max| \mathrm{psf} - \mathrm{forward\_psf}(\ldots) | < 10^{-12}\).
 
+### C7.4.1 `image_meta_digest` (frozen)
+
+Do **not** JSON-serialize the \(N_p\times N_p\) mask. Frozen recipe:
+
+Let `scalars` be the JSON object of all `ImageMeta` fields that are not arrays, plus `catalog_id`, `n_pupil`, `n_fft`. Canonicalize `scalars` with **RFC 8785** (JSON Canonicalization Scheme). Let `mask_bytes` be the C-contiguous little-endian `f64` bytes of `PupilSpec.mask`. Let `amp_bytes` be the same for `amplitude` if present, else empty.
+
+\[
+\texttt{image\_meta\_digest} = \mathrm{hex}\bigl(\mathrm{SHA\text{-}256}(\mathrm{utf8}(\mathrm{JCS}(\texttt{scalars})) \,\|\, \texttt{mask\_bytes} \,\|\, \texttt{amp\_bytes})\bigr)
+\]
+
+C10.7 still compares PSF arrays. C10.7.1 checks digest equality on a fixture `ImageMeta` + `PupilSpec`.
+
 ## C7.5 Out-of-field positions
 
-Allowed. The polynomial will extrapolate. `PsfEval.extrapolated = true` iff \(|u|>1\) or \(|v|>1\) **or** the point lies outside the convex hull of stage-2 stars. Both conditions are recorded separately: `outside_unit_square`, `outside_hull`.
+Allowed. The polynomial will extrapolate (no clamp of \((u,v)\)). `PsfEval.extrapolated` SHALL be `true` iff \(|u|>1\) or \(|v|>1\) **or** the point lies outside the convex hull of stage-2 stars. Both conditions SHALL be serialized separately: `outside_unit_square`, `outside_hull`. C8 / `psf-field report` SHALL print these flags. Success is still returned; garbage corner PSFs are the operator’s to ignore.
 
 ## C7.6 What the evaluator SHALL NOT do
 

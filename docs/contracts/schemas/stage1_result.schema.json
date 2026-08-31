@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/stage1_result.schema.json",
+  "title": "Stage1Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "star_id",
+    "theta",
+    "theta_init",
+    "param_meta",
+    "free_index",
+    "covariance",
+    "covariance_chi2_scaled",
+    "covariance_ok",
+    "correlation",
+    "degenerate_pairs",
+    "residual_image",
+    "weighted_residual",
+    "chi2",
+    "chi2_reduced",
+    "n_iter",
+    "n_fev",
+    "termination",
+    "converged",
+    "defocus_sign_ambiguous",
+    "flag_at_bound"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "star_id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "theta": { "type": "array", "items": { "type": "number" } },
+    "theta_init": { "type": "array", "items": { "type": "number" } },
+    "param_meta": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["term_id", "role", "scope", "frozen", "unit"],
+        "properties": {
+          "term_id": { "type": "string" },
+          "role": { "type": "string" },
+          "scope": { "enum": ["per_star", "per_exposure", "per_session"] },
+          "frozen": { "type": "boolean" },
+          "unit": { "type": "string" }
+        }
+      }
+    },
+    "free_index": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+    "covariance": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    },
+    "covariance_chi2_scaled": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    },
+    "covariance_ok": { "type": "boolean" },
+    "correlation": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    },
+    "degenerate_pairs": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3
+      }
+    },
+    "residual_image": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    },
+    "weighted_residual": { "type": "array", "items": { "type": "number" } },
+    "chi2": { "type": "number" },
+    "chi2_reduced": { "type": "number" },
+    "n_iter": { "type": "integer", "minimum": 0 },
+    "n_fev": { "type": "integer", "minimum": 0 },
+    "termination": {
+      "type": "string",
+      "enum": [
+        "converged_ftol",
+        "converged_xtol",
+        "converged_gtol",
+        "converged_zero_residual",
+        "max_eval",
+        "numerical",
+        "lost_patience",
+        "user",
+        "unknown"
+      ]
+    },
+    "converged": { "type": "boolean" },
+    "defocus_sign_ambiguous": { "type": "boolean" },
+    "flag_at_bound": { "type": "array", "items": { "type": "string" } },
+    "error": {
+      "type": ["object", "null"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

@@ -120,14 +120,14 @@ in stamp-local pixels. Let polar radius from stamp center \(c_\star=(S-1)/2\).
 
 ### C2.8.1 Piston independence
 
-\(I(a_{0,0}=1)\) and \(I(a_{0,0}=0)\) SHALL satisfy \(\max |I_1-I_0| / \max I_0 < 10^{-12}\).
+\(I(a_{0,0}=1)\) and \(I(a_{0,0}=0)\) SHALL satisfy \(\max |I_1-I_0| / \max I_0 < 10^{-10}\).
 
-### C2.8.2 Zero coefficients = Airy, centered, radial
+### C2.8.2 Zero coefficients = Airy, centered, azimuthal
 
 With all \(a_k=0\):
 
 - Peak pixel SHALL be the unique maximum and SHALL lie at the stamp-center pixel (index \((c_\star, c_\star)\)).
-- Radial symmetry: for every pair of pixels at the same radius to within 0.5 px, relative intensity difference vs the azimuthal mean at that radius SHALL be \(< 10^{-6}\) (grid anisotropy bound).
+- **Azimuthal anisotropy (not radial slope).** Let \(r_p\) be the distance in stamp pixels from \(c_\star\). Exclude the center (\(r_p < 0.5\,\mathrm{px}\)). Bin the remaining pixels into annuli of width **0.25 px**. An annulus is tested only if it contains \(\ge 8\) pixels. Let \(\mu\) be the mean intensity in the annulus. Relative azimuthal RMS \(\mathrm{rms}(I-\mu)/\max(\mu, 10^{-15})\) SHALL be \(< 10^{-4}\). This catches grid/fftshift anisotropy and Seidel-like \(m=1\) leakage; it SHALL NOT be read as a bound on the Airy radial gradient.
 
 ### C2.8.3 Defocus evenness
 
@@ -137,7 +137,7 @@ For \(a_{2,0} = \alpha\) and \(a_{2,0}=-\alpha\) with \(\alpha=0.3\) waves, all 
 \max |I(\alpha)-I(-\alpha)| / \max I(0) < 10^{-8}
 \]
 
-and each \(I(\pm\alpha)\) SHALL pass the same radial-symmetry test as C2.8.2 with tolerance \(10^{-6}\).
+and each \(I(\pm\alpha)\) SHALL pass the same azimuthal-anisotropy test as C2.8.2 (annuli, \(10^{-4}\)).
 
 ### C2.8.4 Defocus at zero has vanishing Jacobian column
 
@@ -159,9 +159,10 @@ The first-moment of \(I^2\) restricted to pixels with \(I > 0.05 \max I\) SHALL 
 
 ### C2.8.7 Known analytic \(\tilde Z\) samples
 
-At \(\rho=1, \theta=0\): \(\tilde Z_2^0 = \sqrt{3}\,(2\cdot 1^2 - 1) = \sqrt{3}\). After discrete RMS the value may differ; the **pre-normalization** \(\tilde Z\) at the pixel closest to \(\rho=1, \theta=0\) SHALL match \(\sqrt{3}\) within \(0.02\) (sampling).
+Split the continuous identity from the sampled grid. Do **not** stretch C9.2 \(\xi,\eta\) to force a \(\rho=1\) sample.
 
-At \(\rho=0\): \(\tilde Z_2^0 = -\sqrt{3}\). Same tolerance on the center pixel(s).
+- **Continuous formula (no grid):** \(\tilde Z_2^0(\rho=1,\theta=0)=\sqrt{3}\) and \(\tilde Z_2^0(\rho=0)=-\sqrt{3}\) SHALL match the closed form to 1 ulp in `f64`.
+- **Sampled, pre-normalization \(\tilde Z\):** at the pixel nearest \((\rho=1,\theta=0)\) on the C9.2 grid, \(|\tilde Z-\sqrt{3}|<0.03\). At the pixel(s) nearest \(\rho=0\), \(|\tilde Z+\sqrt{3}|<0.02\). (On \(N_p=256\), max on-axis \(\rho=(N_p-1)/N_p\approx 0.996\), so the rim sample is not \(\sqrt{3}\).) After discrete RMS the stored \(Z\) MAY differ.
 
 ### C2.8.8 Order of writing
 

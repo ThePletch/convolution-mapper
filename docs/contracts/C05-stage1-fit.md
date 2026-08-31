@@ -84,6 +84,8 @@ If \(C_{ii}\le 0\), that row/column of \(R\) is NaN.
 
 **Degenerate pair:** `|R_ij| ≥ 0.90` for \(i\neq j\). Listed in `degenerate_pairs`.
 
+When `covariance_ok=true`, also store `covariance_chi2_scaled = C * max(chi2_reduced, 1)` (same shape as `covariance`). This field is **diagnostic**; C6 SHALL use unscaled \(C\) (C5.6) as the estimator. When `covariance_ok=false`, store `covariance_chi2_scaled` as NaN.
+
 ## C5.7 `Stage1Result` fields
 
 | Field | Type |
@@ -95,6 +97,7 @@ If \(C_{ii}\le 0\), that row/column of \(R\) is NaN.
 | `param_meta` | `ParamMeta[n_all]` |
 | `free_index` | `int64[n]` indices into `theta` |
 | `covariance` | `f64[n, n]` for **free** parameters, C5.6 order = `free_index` |
+| `covariance_chi2_scaled` | `f64[n, n]`; \(C\cdot\max(\chi^2_{\mathrm{red}},1)\); diagnostic only |
 | `covariance_ok` | bool |
 | `correlation` | `f64[n, n]` |
 | `degenerate_pairs` | list of `[term_id_a, term_id_b, rho]` |
@@ -131,7 +134,8 @@ Not used in fitting.
 - Metric per column: \(\|J_j^{\mathrm{an}} - J_j^{\mathrm{fd}}\|_2 / \max(\|J_j^{\mathrm{fd}}\|_2, 10^{-12})\).
 - **Pass:** every **unfrozen phase and photometric** column relative error \(< 10^{-4}\). Kernel columns: \(< 5\times 10^{-4}\) (less smooth truncation).
 - Defocus column at \(a_{2,0}=0\) is exempt from the relative test; it SHALL instead satisfy C2.8.4.
-- `FdReport` stores per-column errors and `passed: bool`.
+- `FdReport` stores per-column errors, `passed: bool` (physical \(\theta\)), and `passed_unconstrained: bool`.
+- When any free parameter has C4.6 bounds, the same central-difference test SHALL also run on the unconstrained \(u\) columns actually passed to LM (step \(h_j\) uses \(\max(1,|u_j|)\)). Pass thresholds: \(10^{-4}\) phase/photometric, \(5\times 10^{-4}\) kernels. If no bounds are active, `passed_unconstrained` SHALL equal `passed`.
 
 This harness SHALL be run in CI on C10.1 unaberrated and on C10.2 single-mode cases (defocus 0.3, coma 0.3).
 

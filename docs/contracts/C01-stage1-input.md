@@ -89,7 +89,7 @@ The geometric center of the stamp is \(c_\star = (S-1)/2\). The Fourier-shift ap
 | `read_noise_e` | f64 | e⁻ | ≥ 0 |
 | `saturation_adu` | f64 | ADU | > 0 |
 | `exptime_s` | f64 | s | > 0 |
-| `known_defocus_waves` | f64 | waves | finite; **default 0**. Frozen additive to \(a_{2}^{0}\) (C4.6) |
+| `known_defocus_waves` | f64 | waves | finite; **default 0**. Frozen additive to \(a_{2}^{0}\) (C4.5) |
 | `pixel_size_m` | f64 \| null | m | optional consistency check |
 
 **Plate-scale consistency (C1.4.1).** If `pixel_size_m` is present:
@@ -100,6 +100,8 @@ s_{\mathrm{hdr}} = \texttt{pixel\_scale\_arcsec} \cdot \frac{\pi}{180\times 3600
 \]
 
 Let \(\delta = |s_{\mathrm{pred}} - s_{\mathrm{hdr}}| / s_{\mathrm{hdr}}\). If \(\delta > 0.05\), ingest SHALL reject. If \(0.01 < \delta \le 0.05\), ingest SHALL accept and SHALL set `ImageMeta.plate_scale_warning = true`. If `pixel_size_m` is absent, skip this check.
+
+**C1.4.2 ImageMeta sidecar.** A YAML or JSON sidecar MAY be merged over FITS keywords for NOR.13 fields (and the rest of C1.4). After merge, any still-missing required field SHALL be rejected. Implementations SHALL NOT default `optical_axis_pixel` to the array center. A unit test SHALL show: incomplete FITS headers fail; the same file plus a complete sidecar succeeds.
 
 **Bandpass:** a FITS `FILTER` or `BANDPASS` string MAY be stored as `aux_filter`. The core SHALL use only `wavelength_m`.
 
@@ -186,9 +188,11 @@ Primary header SHALL contain `SCHEMAV = '1.0.0'` and all C1.4 fields with the na
 
 `EXPTIME`, `GAIN`, `RDNOISE`, `SATURATE`, `LAMBDA` (metres), `PUPILD` (metres), `FOCALLEN` (metres), `PIXSCAL` (arcsec/px), `OAX`, `OAY`, `KDEFOCUS` (waves), `STMPSIZ`.
 
+**Golden fixture:** `tests/fixtures/c1_roundtrip.fits` (added with the implementation) is the round-trip oracle for these `TTYPE` / header names. Python (astropy) and the Rust CLI SHALL both read it.
+
 ### C1.9.2 JSON Schema
 
-See `schemas/star_record.schema.json`. Pydantic models SHALL be generated from or tested 1:1 against that schema. Rust `serde` structs SHALL deserialize the same JSON.
+See `schemas/star_record.schema.json`, `schemas/image_meta.schema.json`, `schemas/pupil_spec.schema.json`. Remaining serialized objects: `schemas/stage1_result.schema.json`, `schemas/stage2_result.schema.json`, `schemas/psf_eval.schema.json`, `schemas/fd_report.schema.json`, `schemas/score_report.schema.json`, `schemas/coverage_report.schema.json`, `schemas/extraction_config.schema.json`. Pydantic models SHALL be generated from or tested 1:1 against those schemas. Rust `serde` structs SHALL deserialize the same JSON.
 
 ## C1.10 Invariants the modeler may assume
 

@@ -11,7 +11,7 @@ Requirements use RFC 2119 **SHALL / SHALL NOT / SHOULD / MAY** as defined in `RE
 - The data-contract version is the string `schema_version` with SemVer `MAJOR.MINOR.PATCH`.
 - **Frozen for v1:** `"1.0.0"`.
 - A change to any field name, unit, array layout, missingness rule, or formula that would make an old file silently mis-parse SHALL bump MAJOR.
-- A strictly additive optional field with a stated default MAY bump MINOR.
+- A strictly additive optional field with a stated default MAY bump MINOR. This revision adds optional fields (`selection_mode`, `ScoreOptions.max_stars`, `covariance_chi2_scaled`, `centroid_leak_suspect`, prior `mean: "init"`) with stated defaults; `schema_version` remains `"1.0.0"` so existing files remain valid. The shipped default catalog JSON is updated in place (Moffat prior `mean: "init"`).
 - Documentation-only clarification MAY bump PATCH.
 - Every serialized object (JSON, FITS header, Parquet metadata, PyO3 capsule) SHALL include `schema_version`. Readers SHALL reject unknown MAJOR.
 

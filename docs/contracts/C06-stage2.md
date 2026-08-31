@@ -26,7 +26,7 @@ Design matrix \(X_{s j} = B_j(u_s, v_s)\). Solve weighted least squares
 
 Normal equations \( (X^{\top} W X) c = X^{\top} W a \) with \(W=\mathrm{diag}(w)\). Solve by Cholesky of \(X^{\top}WX\). If that fails, use SVD with relative singular-value cutoff \(10^{-8}\); set `used_svd=true`.
 
-Covariance of \(c\): \(C_c = (X^{\top} W X)^{-1}\) (Gauss–Markov, assuming \(a_s\) independent — v1 **ignores** stage-1 off-diagonal covariances between different terms; this is frozen). Cross-term correlations at stage 1 are reported in C8, not folded into stage 2 in v1.
+Covariance of \(c\): \(C_c = (X^{\top} W X)^{-1}\) (Gauss–Markov, assuming \(a_s\) independent — v1 **ignores** stage-1 off-diagonal covariances between different terms; this is frozen). Cross-term correlations at stage 1 are reported in C8, not folded into stage 2 in v1. Each map SHALL set `independence_assumption: true` (constant) so reporters cannot omit the caveat. C6 SHALL NOT substitute `covariance_chi2_scaled` for \(C\).
 
 ## C6.3 Conditioning report (required)
 
@@ -60,7 +60,7 @@ If `bundle.matrix` is null (v1), skip. Non-null is rejected in v1 (C3.7.1).
 
 | Field | Content |
 |---|---|
-| `maps` | dict `term_id` → `{ "coefficients": f64[q], "covariance": f64[q,q], "cond2": f64, "ill_conditioned": bool, "residuals": f64[n_stars] }` |
+| `maps` | dict `term_id` → `{ "coefficients": f64[q], "covariance": f64[q,q], "cond2": f64, "ill_conditioned": bool, "independence_assumption": true, "residuals": f64[n_stars] }` |
 | `kernel_globals` | dict of weighted means / rotation fit |
 | `dropped_star_ids` | list |
 | `n_stars_used` | int |

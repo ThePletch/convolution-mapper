@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/pupil_spec.schema.json",
+  "title": "PupilSpec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "mask", "n_pupil", "n_fft"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "mask": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    },
+    "n_pupil": { "type": "integer", "enum": [128, 256, 512] },
+    "n_fft": { "type": "integer" },
+    "amplitude": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    }
+  }
+}

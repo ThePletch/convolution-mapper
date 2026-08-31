@@ -20,7 +20,7 @@ Sensor tilt is the linear monomials of `zernike_2_0` (C3.3, C3.7.1). There is no
 
 ## L5. Defocus sign
 
-C2.8.3 evenness + C3.5.1 positive init + C5.3 `defocus_sign_ambiguous` + C4.5 known offset + C10.3.3 absolute-value scoring. **Check:** no requirement says LM will recover the algebraic sign from a single in-focus exposure.
+C2.8.3 evenness + C3.5.1 positive extra-width \(d\) minus `known_defocus_waves` + C5.3 `defocus_sign_ambiguous` + C4.5 known offset + C10.3.3 absolute-value scoring. **Check:** no requirement says LM will recover the algebraic sign from a single in-focus exposure. **Check:** C10.9.
 
 ## L6. Two-stage information barrier
 
@@ -61,3 +61,15 @@ C2.8.8 forbids merging FFT code before closed-form tests exist. C10.8 Jacobian C
 ## L15. Oversampling
 
 C7.2 forbids even `kS`. Default oversample is 1. No implicit `fft` crop.
+
+## L16. Known-defocus init
+
+\(a_{2,0}^{\mathrm{init}}\) subtracts `known_defocus_waves` (C3.5.1) so C4.5 does not double-count. **Check:** C10.9.
+
+## L17. C2.8.2 is azimuthal
+
+C2.8.2 measures azimuthal RMS in 0.25 px annuli, not the Airy radial gradient.
+
+## L18. Default selection vs coverage mode
+
+Default `selection_mode=highest_snr`. `snr_by_cell` does not change C10 because \(n_{\mathrm{truth}}<\texttt{max\_selected}\).

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/fd_report.schema.json",
+  "title": "FdReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "column_errors",
+    "passed",
+    "passed_unconstrained"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "column_errors": {
+      "type": "array",
+      "items": { "type": "number" }
+    },
+    "column_errors_unconstrained": {
+      "type": "array",
+      "items": { "type": "number" }
+    },
+    "passed": { "type": "boolean" },
+    "passed_unconstrained": { "type": "boolean" }
+  }
+}

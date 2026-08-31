@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/score_report.schema.json",
+  "title": "ScoreReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "per_star",
+    "session_degeneracies",
+    "stage2_maps",
+    "weak_phase_all_fraction"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "per_star": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "star_id",
+          "chi2_reduced",
+          "structured_residual",
+          "centroid_leak_suspect",
+          "scores"
+        ],
+        "properties": {
+          "star_id": { "type": "string" },
+          "chi2_reduced": { "type": "number" },
+          "structured_residual": { "type": "boolean" },
+          "centroid_leak_suspect": { "type": "boolean" },
+          "scores": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["term_id", "score", "suggest_add"],
+              "properties": {
+                "term_id": { "type": "string" },
+                "score": { "type": "number" },
+                "suggest_add": { "type": "boolean" },
+                "undefined": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "session_degeneracies": { "type": "array" },
+    "stage2_maps": { "type": "object" },
+    "weak_phase_all_fraction": { "type": "number" }
+  }
+}

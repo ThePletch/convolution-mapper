@@ -110,18 +110,26 @@ Let \(\hat a_s\) be stage-1 local coefficient, \(a_s^\star\) truth.
 ## C10.6 Extraction gates (not fitter)
 
 - `n_selected ≥ 0.5 * n_truth` for all scenarios except `extraction_stress` (≥ 0.4).
-- C1A.12 `empty_cells ≤ 3`, `design_cond_plane ≤ 1e6`.
+- C1A.12 `empty_cells ≤ 3`, `design_cond_plane ≤ 1e6`. Corpus extraction uses `selection_mode=highest_snr` (L18).
 - Median centroid error \(\lvert \hat x - x^\star \rvert \le 0.15\) px for `unaberrated`.
 
 ## C10.7 Evaluator self-consistency
 
 C7.4 provenance inequality \(10^{-12}\) on a zero-kernel, integer-centered, in-field point.
 
+### C10.7.1 Digest fixture
+
+A committed `ImageMeta` + `PupilSpec` + `catalog_id` fixture SHALL produce a bit-stable `image_meta_digest` (C7.4.1). Changing RFC 8785 key order or hashing the mask as JSON is non-conformant.
+
 ## C10.8 Jacobian CI
 
-C5.10 SHALL pass on `unaberrated` (one representative star) and `single_defocus_const` (one star).
+C5.10 SHALL pass on `unaberrated` (one representative star) and `single_defocus_const` (one star), including `passed_unconstrained` when bounds are active.
 
-## C10.9 What the corpus SHALL NOT do
+## C10.9 Defocus-init diversity (unit-level, no full image)
+
+A noiseless stamp generated with the C10.1 camera, `known_defocus_waves=0.3`, true fitted \(a_{2,0}=0\), all other \(a_k=0\), kernels omitted, SHALL satisfy \(|a_{2,0}^{\mathrm{init}}|<0.05\) under C3.5.1. This catches double-counting of C4.5; C10.1’s `known_defocus_waves=0` cannot.
+
+## C10.10 What the corpus SHALL NOT do
 
 - Use Tiny Tim, Zemax, or any external PSF renderer as truth.
 - Place stars within 40 px of the edge.

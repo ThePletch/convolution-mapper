@@ -136,7 +136,7 @@ implemented as multiplication in Fourier space of the **already fftshifted** arr
 
 **Analytic kernel derivatives:** \(\partial I / \partial \alpha = I_0 \otimes \partial K/\partial\alpha\) with the same FFT convolution, then the unit-sum projection analogously. Closed forms of \(\partial K/\partial\alpha\) are in C3.6. After convolution, the phase Jacobian columns SHALL be convolved with \(K\) (not with \(\partial K\)).
 
-Kernel application order is **catalog list order**. Convolution commutes for scalar kernels; order is still frozen so Jacobians and tests bit-compare.
+Kernel application order is **catalog list order**. Convolution commutes for scalar kernels; sequential apply + re-unit-sum is the **reference**. Fused \(\hat K=\prod_i \hat K_i\) then one multiply is conformant iff \(\max|I_{\mathrm{fused}}-I_{\mathrm{ref}}|<10^{-12}\) on the C10.1 unaberrated FFT grid. Jacobian: phase columns still convolve with the **product** \(K\); kernel column \(i\) uses \(\partial K_i\) and \(\prod_{j\neq i} K_j\).
 
 ## C9.10 Detector resampling
 
@@ -154,11 +154,13 @@ Multiply the unshifted (ifftshifted) Fourier transform of \(I\) by
 
 with frequencies \(k_x, k_y\) in `fftfreq` convention (0, …, \(N_f/2-1\), \(-N_f/2\), …, \(-1\)). Inverse DFT, fftshift. This is the unique band-limited shift on the FFT grid.
 
+**Placement vs shift (SHALL):** C9.10.1 uses \(\Delta = c - c_\star\). C9.10.2 places detector pixel \(i\) using \(c_\star\) only. Substituting \(c\) into the placement formula is non-conformant (double shift).
+
 ### C9.10.2 Bin / interpolate onto detector pixels
 
 Each detector pixel is a square of side \(r\) FFT pixels (C9.7), not necessarily integer.
 
-**Identity:** area-weighted average (box integration) of \(I^{\mathrm{fft}}\) over the square of side \(r\) centered on the detector pixel’s conjugate location. Implementations SHALL compute that integral (or an equivalent whose result matches it). Nodes that fall outside `[0, N_f)` contribute 0 (no wrap).
+**Identity:** area-weighted average (box integration) of \(I^{\mathrm{fft}}\) over the square of side \(r\) centered on the detector pixel’s conjugate location. Nodes that fall outside `[0, N_f)` contribute 0 (no wrap).
 
 Place detector pixel \((i,j)\) (stamp-local, 0-based) at FFT coordinates:
 
@@ -167,11 +169,16 @@ q_{\mathrm{ctr}} = N_f/2 + (i - c_\star)\, r, \qquad
 p_{\mathrm{ctr}} = N_f/2 + (j - c_\star)\, r
 \]
 
-The integration domain is the axis-aligned square \([q_{\mathrm{ctr}}-r/2, q_{\mathrm{ctr}}+r/2] \times [p_{\mathrm{ctr}}-r/2, p_{\mathrm{ctr}}+r/2]\). Implementations SHOULD evaluate it by bilinear sampling of \(I^{\mathrm{fft}}\) at 4×4 Gauss–Legendre nodes per detector pixel.
+The integration domain is the axis-aligned square \([q_{\mathrm{ctr}}-r/2, q_{\mathrm{ctr}}+r/2] \times [p_{\mathrm{ctr}}-r/2, p_{\mathrm{ctr}}+r/2]\). v1 SHALL evaluate it by bilinear sampling of \(I^{\mathrm{fft}}\) at **4×4 Gauss–Legendre** nodes per detector pixel.
 
 If the integrated weight is 0, that detector pixel is 0.
 
-After filling the stamp \(m_{ij}\), **do not** re-normalize to unit sum (flux \(F\) is a free parameter). The unit-sum constraint already held on the FFT grid; box integration approximately conserves flux. C10.4 checks \(\sum m\) is within 2% of 1 for the C10.1 camera at zero aberration before flux scaling.
+After filling the stamp \(m_{ij}\), **do not** re-normalize to unit sum (flux \(F\) is a free parameter). The unit-sum constraint already held on the FFT grid; box integration approximately conserves flux. C10.4 checks \(\sum m\) is within 2% of 1 for the C10.1 camera at zero aberration before flux scaling. That 2% check is a **pipeline** sanity bound, not the resample definition (C9.10.3).
+
+### C9.10.3 Resample harness (load-bearing)
+
+- **Constant image.** \(I^{\mathrm{fft}}=1/N_f^2\) everywhere. Each in-bounds stamp pixel SHALL equal the overlap area of its \(r\times r\) box with \([0,N_f)^2\), relative error \(<10^{-12}\).
+- **Rectangle.** An axis-aligned rectangle of ones on the FFT grid, zeros elsewhere. Each stamp pixel SHALL equal (analytic box overlap) / \(r^2\) within \(10^{-8}\).
 
 ## C9.11 Flux and sky
 

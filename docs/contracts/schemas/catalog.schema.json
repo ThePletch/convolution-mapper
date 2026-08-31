@@ -58,8 +58,11 @@
       "required": ["family"],
       "properties": {
         "family": { "enum": ["none", "gaussian"] },
-        "mean": { "type": "number" },
+        "mean": {
+          "oneOf": [{ "type": "number" }, { "const": "init" }]
+        },
         "sigma": { "type": "number", "exclusiveMinimum": 0 },
+        "sigma_rel": { "type": "number", "exclusiveMinimum": 0 },
         "stage2": {
           "type": "object",
           "additionalProperties": false,
@@ -69,7 +72,27 @@
             "sigma": { "type": "array", "items": { "type": "number" } }
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "family": { "const": "gaussian" } },
+            "required": ["family"]
+          },
+          "then": {
+            "oneOf": [
+              {
+                "required": ["mean", "sigma"],
+                "properties": { "mean": { "type": "number" } }
+              },
+              {
+                "required": ["mean", "sigma_rel"],
+                "properties": { "mean": { "const": "init" } }
+              }
+            ]
+          }
+        }
+      ]
     },
     "InitSpec": {
       "type": "object",

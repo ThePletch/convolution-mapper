@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/stage2_result.schema.json",
+  "title": "Stage2Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "maps",
+    "kernel_globals",
+    "dropped_star_ids",
+    "n_stars_used",
+    "param_meta"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "maps": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "coefficients",
+          "covariance",
+          "cond2",
+          "ill_conditioned",
+          "independence_assumption",
+          "residuals"
+        ],
+        "properties": {
+          "coefficients": { "type": "array", "items": { "type": "number" } },
+          "covariance": {
+            "type": "array",
+            "items": { "type": "array", "items": { "type": "number" } }
+          },
+          "cond2": { "type": "number" },
+          "ill_conditioned": { "type": "boolean" },
+          "independence_assumption": { "const": true },
+          "residuals": { "type": "array", "items": { "type": "number" } }
+        }
+      }
+    },
+    "kernel_globals": { "type": "object" },
+    "dropped_star_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "n_stars_used": { "type": "integer", "minimum": 0 },
+    "param_meta": { "type": "array" },
+    "star_ids_used": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

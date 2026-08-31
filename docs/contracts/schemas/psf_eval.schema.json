@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/psf_eval.schema.json",
+  "title": "PsfEval",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "psf",
+    "zernike_vector",
+    "kernel_vector",
+    "field_xy_mm",
+    "u_v",
+    "image_meta_digest",
+    "catalog_id",
+    "stage2_schema_version",
+    "extrapolated",
+    "outside_unit_square",
+    "outside_hull"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "psf": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    },
+    "zernike_vector": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "kernel_vector": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "field_xy_mm": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "u_v": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "image_meta_digest": { "type": "string", "minLength": 64, "maxLength": 64 },
+    "catalog_id": { "type": "string" },
+    "stage2_schema_version": { "const": "1.0.0" },
+    "extrapolated": { "type": "boolean" },
+    "outside_unit_square": { "type": "boolean" },
+    "outside_hull": { "type": "boolean" }
+  }
+}

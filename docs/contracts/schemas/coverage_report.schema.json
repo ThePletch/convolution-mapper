@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/coverage_report.schema.json",
+  "title": "CoverageReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "n_detected",
+    "n_candidate",
+    "n_selected",
+    "frac_selected_of_detected",
+    "grid_3x3",
+    "empty_cells",
+    "convex_hull_area_mm2",
+    "detector_area_mm2",
+    "hull_fill",
+    "design_cond_plane",
+    "design_cond_quad"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "n_detected": { "type": "integer", "minimum": 0 },
+    "n_candidate": { "type": "integer", "minimum": 0 },
+    "n_selected": { "type": "integer", "minimum": 0 },
+    "frac_selected_of_detected": { "type": "number" },
+    "grid_3x3": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": { "type": "integer", "minimum": 0 }
+    },
+    "empty_cells": { "type": "integer", "minimum": 0, "maximum": 9 },
+    "convex_hull_area_mm2": { "type": "number", "minimum": 0 },
+    "detector_area_mm2": { "type": "number", "exclusiveMinimum": 0 },
+    "hull_fill": { "type": "number" },
+    "design_cond_plane": { "type": "number" },
+    "design_cond_quad": { "type": "number" }
+  }
+}

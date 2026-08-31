@@ -5,7 +5,7 @@ Python-only. Output is **exactly** C1. No extra columns are required by the mode
 ## C1A.1 Algorithm sequence (frozen order)
 
 1. Load FITS image as `float64` 2-D array `data_raw` in ADU, 0-based (NOR.7). Do not apply any additional nonlinearity correction.
-2. Read `ImageMeta` required keywords; reject if any NOR.13 field is missing.
+2. Read `ImageMeta` required keywords (C1.4), merging a sidecar if present (C1.4.2); reject if any NOR.13 field is missing after merge.
 3. Background (C1A.2) → `bkg`, `bkg_rms`.
 4. `data_sub = data_raw - bkg`.
 5. Detect (C1A.3).
@@ -128,12 +128,30 @@ SNR (frozen):
 
 Candidates with \(\mathrm{SNR} < 20\) SHALL NOT receive `SELECTED`. **Frozen SNR minimum: 20.** Allowed config interval: [10, 50].
 
-Among remaining candidates, `SELECTED` is assigned as follows (frozen):
+`ExtractionConfig.selection_mode` (frozen allowed set):
 
-1. Keep all candidates with SNR ≥ 20 (no brightness cap).
-2. If more than `max_selected` survive, keep the `max_selected` with highest SNR. **Frozen default `max_selected = 400`.** Allowed [50, 2000].
+| Value | Default | Behavior |
+|---|---|---|
+| `highest_snr` | **yes** | C1A.11.1 |
+| `snr_by_cell` | no | C1A.11.2 |
 
-v1 SHALL NOT spatially thin beyond the blend cut. Field coverage is reported, not optimized.
+**Frozen default `max_selected = 400`.** Allowed [50, 2000]. If the number of candidates with SNR ≥ 20 is \(\le\) `max_selected`, keep all of them (no brightness cap) under either mode.
+
+### C1A.11.1 `highest_snr` (default)
+
+If more than `max_selected` candidates survive the SNR floor, keep the `max_selected` with highest SNR. Highest-SNR-only MAY empty detector corners; that is why C1A.11.2 exists. C10 uses this mode (and \(n_{\mathrm{truth}} <\) `max_selected`), so corpus gates are unchanged.
+
+### C1A.11.2 `snr_by_cell`
+
+Same candidates and SNR floor. Partition the detector with the same 3×3 field-mm bins as C1A.12. Let \(q = \lfloor \texttt{max\_selected}/9 \rfloor\). In each cell, take the \(q\) highest-SNR candidates (or all if fewer). Fill leftover slots from remaining candidates by global SNR. If `max_selected` is not a multiple of 9, the remainder after the nine quotas also goes to global SNR.
+
+v1 SHALL NOT use continuous min-distance thinning or D-optimal design. `snr_by_cell` is the only coverage-aware ranker.
+
+### C1A.11.3 Hold-out (after selection)
+
+`ExtractionConfig.holdout_fraction` (default **0**, allowed [0, 0.5]) MAY assign `USER_EXCLUDE` at random among stars that just received `SELECTED`, using `holdout_seed` (`uint64`, required if `holdout_fraction > 0`). This runs **after** C1A.11.1/2. Default 0 preserves the corpus. Stage-2 SHALL NOT consume `USER_EXCLUDE` stars (C6.1).
+
+v1 SHALL NOT spatially thin beyond the blend cut except via `snr_by_cell`. Field coverage is always reported (C1A.12).
 
 ## C1A.12 Field-coverage report
 
@@ -174,7 +192,7 @@ def extract_to_files(
 ) -> None: ...
 ```
 
-`ExtractionConfig` is a pydantic `BaseModel` with the fields in C1A.2, C1A.3, C1A.11. Third-party objects stay inside the function body.
+`ExtractionConfig` is a pydantic `BaseModel` with the fields in C1A.2, C1A.3, C1A.11 (`selection_mode`, `max_selected`, SNR floor, `holdout_fraction`, `holdout_seed`). Third-party objects stay inside the function body. Schema: `schemas/extraction_config.schema.json`.
 
 ## C1A.14 Test-corpus ingestion
 

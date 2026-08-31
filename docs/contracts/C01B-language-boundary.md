@@ -87,7 +87,9 @@ PsfFieldError
 
 The Rust crate SHALL also be a binary `psf-field` that reads C1 FITS/Parquet and writes C5/C6/C7 FITS/Parquet. This is the same schema as PyO3. The front-end is therefore swappable in practice.
 
-Subcommands (frozen): `stage1`, `stage2`, `eval`, `score`, `check-jacobian`.
+Subcommands (frozen): `stage1`, `stage2`, `eval`, `score`, `check-jacobian`, `report`.
+
+`report` writes C8.8 artifacts from existing C5/C6/C8 outputs. Python plotting MAY render those files and SHALL NOT recompute the numbers.
 
 ## C1B.8 Python typing policy (mandatory)
 
