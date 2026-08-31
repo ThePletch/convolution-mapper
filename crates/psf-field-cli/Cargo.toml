@@ -1,0 +1,15 @@
+[package]
+name = "psf-field-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "CLI for the PSF field modeler (C1B.7)"
+
+[[bin]]
+name = "psf-field"
+path = "src/main.rs"
+
+[dependencies]
+psf-field-core = { path = "../psf-field-core" }
