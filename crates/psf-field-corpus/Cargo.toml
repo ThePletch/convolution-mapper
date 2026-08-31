@@ -1,0 +1,11 @@
+[package]
+name = "psf-field-corpus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Synthetic self-inverse test corpus (C10)"
+
+[dependencies]
+psf-field-core = { path = "../psf-field-core" }

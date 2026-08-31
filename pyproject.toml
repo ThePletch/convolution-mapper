@@ -1,0 +1,66 @@
+[build-system]
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "psf-field"
+version = "0.1.0"
+description = "PSF field modeler: Python extraction/diagnostics plus a Rust core"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+authors = [{ name = "ThePletch" }]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Typing :: Typed",
+]
+dependencies = [
+    "numpy>=2.0",
+    "pydantic>=2.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "jsonschema>=4.23",
+    "mypy>=1.11",
+    "pyright>=1.1.390",
+    "pytest>=8.0",
+    "types-jsonschema>=4.23",
+]
+astro = [
+    "astropy>=6.0",
+    "photutils>=2.0",
+]
+
+[tool.maturin]
+manifest-path = "crates/psf-field-core/Cargo.toml"
+module-name = "psf_field_core._core"
+python-source = "python"
+features = ["python"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+disallow_untyped_calls = true
+no_implicit_reexport = true
+mypy_path = "python"
+files = ["python"]
+plugins = ["pydantic.mypy"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["python"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["python"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
