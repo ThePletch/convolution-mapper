@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  fast:
-    name: Fast (unit, schema, mypy, pyright)
+  test:
+    name: Tests and static analysis
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,10 +31,10 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: mypy
-        run: mypy --strict python/psf_field python/psf_field_core
+        run: mypy --strict
 
       - name: pyright
-        run: pyright python/psf_field python/psf_field_core
+        run: pyright
 
       - name: pytest
         run: pytest -q tests
