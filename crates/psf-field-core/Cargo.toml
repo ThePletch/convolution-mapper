@@ -1,0 +1,18 @@
+[package]
+name = "psf-field-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Rust core for the PSF field modeler (C2, C5–C9)"
+
+[lib]
+name = "psf_field_core"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+python = ["dep:pyo3"]
+
+[dependencies]
+pyo3 = { workspace = true, optional = true }
