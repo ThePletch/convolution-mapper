@@ -27,6 +27,8 @@ CENTROID_MAX_OFFSET_PX = 0.6
 
 
 class StarRecord(BaseModel):
+    """One star's postage stamp, noise map, centroid, and flags as presented to stage-1 fitting."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion
@@ -86,6 +88,8 @@ class StarRecord(BaseModel):
 
 
 class ImageMeta(BaseModel):
+    """Per-exposure camera and geometry metadata required to interpret stamps (NOR.13)."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion
@@ -160,6 +164,8 @@ _ALLOWED_FFT_RATIO = frozenset({2, 4, 8})
 
 
 class PupilSpec(BaseModel):
+    """Pupil mask and FFT sampling grid used by the forward model."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion
@@ -197,6 +203,8 @@ class PupilSpec(BaseModel):
 
 
 class Stage1InputConfig(BaseModel):
+    """Session-level stamp-size defaults stored beside the star table."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion = "1.0.0"
@@ -215,6 +223,8 @@ class Stage1InputConfig(BaseModel):
 
 
 class ExtractionConfig(BaseModel):
+    """DAOPHOT-style detection and star-selection knobs for the C1A extraction front-end."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion

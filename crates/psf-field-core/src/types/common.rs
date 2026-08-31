@@ -147,7 +147,7 @@ pub fn check_vec2(name: &str, v: [f64; 2]) -> Result<(), PsfFieldError> {
     Ok(())
 }
 
-/// C1.7 closed flag vocabulary.
+/// Closed per-star quality vocabulary (C1.7); not a free-form string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Flag {
@@ -160,7 +160,7 @@ pub enum Flag {
     Selected,
 }
 
-/// C4.7 / C5.7 parameter annotation sidecar.
+/// Annotation sidecar for one element of the flat θ vector.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParamMeta {
     pub term_id: String,
@@ -170,7 +170,7 @@ pub struct ParamMeta {
     pub unit: String,
 }
 
-/// C5.6 degenerate pair serialized as `[term_a, term_b, rho]`.
+/// Two free parameters whose stage-1 correlation exceeds the degeneracy threshold.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DegeneratePair {
     pub term_a: String,

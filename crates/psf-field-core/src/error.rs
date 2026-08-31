@@ -2,7 +2,8 @@
 
 use std::fmt;
 
-/// Short `code` string carried on the Python exception.
+/// Closed C1B.6 `code` vocabulary (`input`, `convergence`, `numerics`, `internal`).
+/// This is not a free-form string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorCode {
     Input,
@@ -29,7 +30,7 @@ impl fmt::Display for ErrorCode {
     }
 }
 
-/// `module` string carried on the Python exception (C1B.6).
+/// Closed C1B.6 `module` vocabulary carried on the Python exception.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorModule {
     Zernike,
@@ -60,7 +61,10 @@ impl fmt::Display for ErrorModule {
     }
 }
 
-/// Core error type. Panics never cross the PyO3 boundary (C1B.6).
+/// Base error for ingest, fitting, evaluation, and the Python/CLI boundary.
+///
+/// `code` is [`ErrorCode`] (four C1B.6 values), not a free-form string. Panics
+/// never cross the PyO3 boundary; they map to [`ErrorCode::Internal`].
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("{message}")]
 pub struct PsfFieldError {

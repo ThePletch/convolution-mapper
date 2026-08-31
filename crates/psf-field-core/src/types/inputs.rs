@@ -8,7 +8,7 @@ use crate::types::common::{
     check_stamp_size, check_vec2, Flag, SCHEMA_VERSION,
 };
 
-/// C1.6 pixel_mask bitfield stored as `u8`.
+/// Bit flags packed into each stamp pixel of `StarRecord.pixel_mask`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PixelMaskBits;
 
@@ -19,7 +19,7 @@ impl PixelMaskBits {
     pub const NEIGHBOR: u8 = 1 << 3;
 }
 
-/// C1.1 `StarRecord`.
+/// One star's postage stamp, noise map, centroid, and flags as presented to stage-1 fitting.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StarRecord {
     pub schema_version: String,
@@ -156,7 +156,7 @@ fn square_u8_len(name: &str, m: &[Vec<u8>]) -> Result<usize, PsfFieldError> {
     Ok(n)
 }
 
-/// C1.4 `ImageMeta`.
+/// Per-exposure camera and geometry metadata required to interpret stamps (NOR.13).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageMeta {
     pub schema_version: String,
@@ -251,7 +251,7 @@ pub fn mm_per_pixel(focal_length_m: f64, pixel_scale_arcsec: f64) -> f64 {
     focal_length_m * pixel_scale_rad(pixel_scale_arcsec) * 1_000.0
 }
 
-/// C1.5 `PupilSpec`.
+/// Pupil mask and FFT sampling grid used by the forward model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PupilSpec {
     pub schema_version: String,
@@ -313,7 +313,7 @@ impl PupilSpec {
     }
 }
 
-/// C1.8 config stored beside the stars.
+/// Session-level stamp-size defaults stored beside the star table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stage1InputConfig {
     pub schema_version: String,
@@ -342,7 +342,7 @@ impl Stage1InputConfig {
     }
 }
 
-/// C1A extraction config (schema `extraction_config.schema.json`).
+/// DAOPHOT-style detection and star-selection knobs for the C1A extraction front-end.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtractionConfig {
     pub schema_version: String,

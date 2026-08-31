@@ -22,6 +22,8 @@ from psf_field.models.common import (
 
 
 class ParamMeta(BaseModel):
+    """Annotation sidecar for one element of the flat θ vector (term, role, scope, freeze, unit)."""
+
     model_config = MODEL_CONFIG
 
     term_id: str
@@ -32,6 +34,8 @@ class ParamMeta(BaseModel):
 
 
 class DegeneratePair(BaseModel):
+    """Two free parameters whose stage-1 correlation exceeds the degeneracy threshold."""
+
     model_config = MODEL_CONFIG
 
     term_a: str
@@ -48,6 +52,8 @@ class DegeneratePair(BaseModel):
 
 
 class Stage1ErrorPayload(BaseModel):
+    """Error code and message when a per-star fit does not succeed."""
+
     model_config = MODEL_CONFIG
 
     code: str
@@ -68,6 +74,8 @@ Termination = Literal[
 
 
 class Stage1Result(BaseModel):
+    """Per-star LM solution: coefficients, covariance, residuals, and termination."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion
@@ -107,6 +115,8 @@ class Stage1Result(BaseModel):
 
 
 class FieldMap(BaseModel):
+    """Stage-2 polynomial (or uniform) fit of one catalog term across the field."""
+
     model_config = MODEL_CONFIG
 
     coefficients: list[FiniteFloat]
@@ -122,6 +132,8 @@ class FieldMap(BaseModel):
 
 
 class Stage2Result(BaseModel):
+    """All field maps and kernel globals from the second-stage regression; no pixels are re-read."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion
@@ -134,6 +146,8 @@ class Stage2Result(BaseModel):
 
 
 class PsfEval(BaseModel):
+    """Model PSF at an arbitrary field position, plus the local coefficients that produced it."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion
@@ -155,6 +169,8 @@ class PsfEval(BaseModel):
 
 
 class FdReport(BaseModel):
+    """Finite-difference check of analytic Jacobian columns at a stated θ."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion
@@ -165,6 +181,8 @@ class FdReport(BaseModel):
 
 
 class ScoreEntry(BaseModel):
+    """Score-test result for one candidate unmodeled term on one star."""
+
     model_config = MODEL_CONFIG
 
     term_id: str
@@ -174,6 +192,8 @@ class ScoreEntry(BaseModel):
 
 
 class StarScore(BaseModel):
+    """Per-star residual diagnostics and candidate-term scores."""
+
     model_config = MODEL_CONFIG
 
     star_id: str
@@ -184,6 +204,8 @@ class StarScore(BaseModel):
 
 
 class ScoreReport(BaseModel):
+    """Session-level missing-term ranking and documented blur-degeneracy summary."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion
@@ -194,6 +216,8 @@ class ScoreReport(BaseModel):
 
 
 class CoverageReport(BaseModel):
+    """How selected stars fill the detector, for judging stage-2 field-map conditioning."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion

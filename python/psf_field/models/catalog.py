@@ -20,6 +20,8 @@ from psf_field.models.common import (
 
 
 class FieldBasis(BaseModel):
+    """Which monomials in normalized field (u, v) a term's stage-2 map may use."""
+
     model_config = MODEL_CONFIG
 
     family: Literal["monomial"]
@@ -35,6 +37,8 @@ class FieldBasis(BaseModel):
 
 
 class Stage2Prior(BaseModel):
+    """Optional Gaussian prior on stage-2 field-map coefficients, aligned with `FieldBasis.terms`."""
+
     model_config = MODEL_CONFIG
 
     mean: list[FiniteFloat]
@@ -42,6 +46,8 @@ class Stage2Prior(BaseModel):
 
 
 class PriorSpec(BaseModel):
+    """Stage-1 (and optional stage-2) prior on a catalog term's local coefficient."""
+
     model_config = MODEL_CONFIG
 
     family: Literal["none", "gaussian"]
@@ -69,12 +75,16 @@ class PriorSpec(BaseModel):
 
 
 class InitSpec(BaseModel):
+    """How to initialize a term's local coefficient before Levenberg–Marquardt."""
+
     model_config = MODEL_CONFIG
 
     method: Literal["zero", "flux_sum", "defocus_moment", "moffat_fwhm"]
 
 
 class KernelSpec(BaseModel):
+    """Which closed-form image-space kernel a catalog term implements."""
+
     model_config = MODEL_CONFIG
 
     id: Literal[
@@ -87,6 +97,8 @@ class KernelSpec(BaseModel):
 
 
 class _TermFields(BaseModel):
+    """Shared identity, freeze, bounds, init, and prior fields for every catalog term kind."""
+
     model_config = MODEL_CONFIG
 
     term_id: TermId
@@ -114,6 +126,8 @@ class _TermFields(BaseModel):
 
 
 class PhaseTerm(_TermFields):
+    """A Zernike (n, m) pupil-phase term with a field basis."""
+
     kind: Literal["phase"]
     n: JsonInt
     m: JsonInt
@@ -121,12 +135,16 @@ class PhaseTerm(_TermFields):
 
 
 class KernelTerm(_TermFields):
+    """An image-space convolution kernel term (seeing, jitter, drift, and kin)."""
+
     kind: Literal["kernel"]
     kernel: KernelSpec
     field_basis: FieldBasis | None = None
 
 
 class PhotometricTerm(_TermFields):
+    """Per-star flux or residual-sky scalar (`term_id` is `flux` or `sky`)."""
+
     kind: Literal["photometric"]
 
     @model_validator(mode="after")
@@ -143,6 +161,8 @@ ErrorTerm = Annotated[
 
 
 class Bundle(BaseModel):
+    """Named linear grouping of catalog terms; v1 ships with a null sensitivity matrix."""
+
     model_config = MODEL_CONFIG
 
     bundle_id: TermId
@@ -152,6 +172,8 @@ class Bundle(BaseModel):
 
 
 class FitScheduleStep(BaseModel):
+    """One freeze/unfreeze step in the staged stage-1 fit."""
+
     model_config = MODEL_CONFIG
 
     name: str
@@ -159,6 +181,8 @@ class FitScheduleStep(BaseModel):
 
 
 class Catalog(BaseModel):
+    """Named aberration and kernel terms, optional bundles, and the default fit schedule."""
+
     model_config = MODEL_CONFIG
 
     schema_version: SchemaVersion

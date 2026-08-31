@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::common::{DegeneratePair, ParamMeta};
 
+/// Why Levenberg–Marquardt stopped (C5.8); a closed vocabulary, not a free-form string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Termination {
@@ -18,12 +19,14 @@ pub enum Termination {
     Unknown,
 }
 
+/// Error code and message when a per-star fit does not succeed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stage1ErrorPayload {
     pub code: String,
     pub message: String,
 }
 
+/// Per-star LM solution: coefficients, covariance, residuals, and termination.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stage1Result {
     pub schema_version: String,
@@ -51,6 +54,7 @@ pub struct Stage1Result {
     pub error: Option<Stage1ErrorPayload>,
 }
 
+/// Stage-2 polynomial (or uniform) fit of one catalog term across the field.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldMap {
     pub coefficients: Vec<f64>,
@@ -61,6 +65,7 @@ pub struct FieldMap {
     pub residuals: Vec<f64>,
 }
 
+/// All field maps and kernel globals from the second-stage regression; no pixels are re-read.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stage2Result {
     pub schema_version: String,
@@ -73,6 +78,7 @@ pub struct Stage2Result {
     pub star_ids_used: Option<Vec<String>>,
 }
 
+/// Model PSF at an arbitrary field position, plus the local coefficients that produced it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PsfEval {
     pub schema_version: String,
@@ -89,6 +95,7 @@ pub struct PsfEval {
     pub outside_hull: bool,
 }
 
+/// Finite-difference check of analytic Jacobian columns at a stated θ.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FdReport {
     pub schema_version: String,
@@ -99,6 +106,7 @@ pub struct FdReport {
     pub passed_unconstrained: bool,
 }
 
+/// Score-test result for one candidate unmodeled term on one star.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScoreEntry {
     pub term_id: String,
@@ -108,6 +116,7 @@ pub struct ScoreEntry {
     pub undefined: Option<bool>,
 }
 
+/// Per-star residual diagnostics and candidate-term scores.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StarScore {
     pub star_id: String,
@@ -117,6 +126,7 @@ pub struct StarScore {
     pub scores: Vec<ScoreEntry>,
 }
 
+/// Session-level missing-term ranking and documented blur-degeneracy summary.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScoreReport {
     pub schema_version: String,
@@ -126,6 +136,7 @@ pub struct ScoreReport {
     pub weak_phase_all_fraction: f64,
 }
 
+/// How selected stars fill the detector, for judging stage-2 field-map conditioning.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CoverageReport {
     pub schema_version: String,
