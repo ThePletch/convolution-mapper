@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/star_record.schema.json",
+  "title": "StarRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "star_id",
+    "exposure_id",
+    "session_id",
+    "field_xy_mm",
+    "source_xy_px",
+    "stamp",
+    "variance",
+    "centroid_xy_px",
+    "pixel_mask",
+    "flags",
+    "flux_sum_adu"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "star_id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "exposure_id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "session_id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "field_xy_mm": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "source_xy_px": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "centroid_xy_px": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "stamp": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    },
+    "variance": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "number" } }
+    },
+    "pixel_mask": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 } }
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "SATURATED",
+          "BLENDED",
+          "EDGE",
+          "SHAPE",
+          "UNDERDETERMINED",
+          "USER_EXCLUDE",
+          "SELECTED"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "flux_sum_adu": { "type": "number" }
+  }
+}

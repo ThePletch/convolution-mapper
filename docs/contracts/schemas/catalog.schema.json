@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://psf-field.local/schemas/catalog.schema.json",
+  "title": "Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog_id", "terms", "bundles", "fit_schedule"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "catalog_id": { "type": "string", "minLength": 1 },
+    "terms": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/ErrorTerm" }
+    },
+    "bundles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Bundle" }
+    },
+    "fit_schedule": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "unfrozen_term_ids"],
+        "properties": {
+          "name": { "type": "string" },
+          "unfrozen_term_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "FieldBasis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "degree", "terms"],
+      "properties": {
+        "family": { "const": "monomial" },
+        "degree": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "terms": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "PriorSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family"],
+      "properties": {
+        "family": { "enum": ["none", "gaussian"] },
+        "mean": { "type": "number" },
+        "sigma": { "type": "number", "exclusiveMinimum": 0 },
+        "stage2": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mean", "sigma"],
+          "properties": {
+            "mean": { "type": "array", "items": { "type": "number" } },
+            "sigma": { "type": "array", "items": { "type": "number" } }
+          }
+        }
+      }
+    },
+    "InitSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method"],
+      "properties": {
+        "method": {
+          "enum": ["zero", "flux_sum", "defocus_moment", "moffat_fwhm"]
+        }
+      }
+    },
+    "KernelSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "enum": [
+            "gaussian_iso",
+            "moffat_iso",
+            "linear_drift",
+            "field_rotation",
+            "periodic_error"
+          ]
+        }
+      }
+    },
+    "ErrorTerm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "term_id",
+        "name",
+        "kind",
+        "scope",
+        "frozen",
+        "enabled",
+        "init",
+        "prior",
+        "units"
+      ],
+      "properties": {
+        "term_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "name": { "type": "string" },
+        "kind": { "enum": ["phase", "kernel", "photometric"] },
+        "scope": { "enum": ["per_star", "per_exposure", "per_session"] },
+        "frozen": { "type": "boolean" },
+        "enabled": { "type": "boolean" },
+        "bounds": {
+          "type": ["array", "null"],
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "number" }
+        },
+        "init": { "$ref": "#/$defs/InitSpec" },
+        "prior": { "$ref": "#/$defs/PriorSpec" },
+        "units": { "type": "string" },
+        "report": { "type": "object" },
+        "n": { "type": "integer", "minimum": 0, "maximum": 15 },
+        "m": { "type": "integer" },
+        "field_basis": { "$ref": "#/$defs/FieldBasis" },
+        "kernel": { "$ref": "#/$defs/KernelSpec" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "phase" } } },
+          "then": { "required": ["n", "m", "field_basis"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "kernel" } } },
+          "then": { "required": ["kernel"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "photometric" } } },
+          "then": {
+            "properties": {
+              "term_id": { "enum": ["flux", "sky"] }
+            }
+          }
+        }
+      ]
+    },
+    "Bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle_id", "name", "term_ids", "matrix"],
+      "properties": {
+        "bundle_id": { "type": "string" },
+        "name": { "type": "string" },
+        "term_ids": { "type": "array", "items": { "type": "string" } },
+        "matrix": { "type": "null" }
+      }
+    }
+  }
+}
