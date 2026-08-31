@@ -25,6 +25,12 @@ The workspace root ties Rust and Python together:
 
 When in doubt about *what* to implement, start in `docs/contracts/README.md` and follow cited requirement IDs. When in doubt about *where* code belongs, keep numerics and serde types in Rust (`psf-field-core`), keep pixel-level extraction and orchestration in Python (`psf_field`), and keep contract checks in `tests/` or `psf-field-corpus`.
 
+## Pull requests
+
+PRs should include a brief summary of implemented functionality, as well as any removed or altered features, and any potentially surprising details that require closer review.
+
+PR descriptions should enumerate any additional necessary testing steps, but SHOULD NOT restate testing steps covered by CI (and should not list 'passes CI' or similar as a testing step). If there are no additional testing steps needed, the testing section should be omitted.
+
 ## Coding style
 
 Scientific and mathematical jargon should be used when referring to specific formulae and physical phenomena. Use acronyms only for terms that are typically referred to by acronyms within their discipline (e.g. FFT for Fast Fourier Transform). Maintain `GLOSSARY.md` under the `docs/` folder with a reference definition for all acronyms used in the project. Keep names consistent across the code base.
