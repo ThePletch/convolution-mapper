@@ -199,6 +199,14 @@ class PupilSpec(BaseModel):
             raise ValueError("v1 pupil mask values must be in {0, 1}")
         if self.amplitude is not None and self.amplitude.shape != self.mask.shape:
             raise ValueError("amplitude shape must match mask")
+        # Amplitude is undefined off the aperture; zero it so P = A M exp(iΦ)
+        # cannot leak a non-zero field through a masked pixel. (C9.5)
+        if self.amplitude is not None:
+            zeroed = np.ascontiguousarray(
+                np.where(self.mask == 0.0, 0.0, self.amplitude),
+                dtype=np.float64,
+            )
+            object.__setattr__(self, "amplitude", zeroed)
         return self
 
 

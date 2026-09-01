@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from psf_field.errors import InputError
-from psf_field.ingest import ingest_image_meta_from_fits, ingest_star_record
+from psf_field.ingest import ingest_image_meta_from_fits, ingest_pupil_spec, ingest_star_record
 from psf_field.io.fits_header import write_primary_header
 
 
@@ -83,3 +83,23 @@ def test_sidecar_incomplete_image_meta(tmp_path: Path) -> None:
     assert meta.wavelength_m == pytest.approx(5.5e-7)
     assert meta.optical_axis_pixel == (511.5, 511.5)
     np.testing.assert_allclose(meta.optical_axis_pixel, (511.5, 511.5))
+
+
+def test_pupil_ingest_zeros_amplitude_outside_the_mask() -> None:
+    n_pupil = 128
+    yy, xx = np.ogrid[:n_pupil, :n_pupil]
+    center = (n_pupil - 1) / 2.0
+    rho = np.hypot(xx - center, yy - center) / (n_pupil / 2.0)
+    mask = (rho <= 1.0).astype(np.float64)
+    pupil = ingest_pupil_spec(
+        {
+            "schema_version": "1.0.0",
+            "mask": mask,
+            "n_pupil": n_pupil,
+            "n_fft": n_pupil * 4,
+            "amplitude": np.ones((n_pupil, n_pupil), dtype=np.float64),
+        }
+    )
+    assert pupil.amplitude is not None
+    np.testing.assert_array_equal(pupil.amplitude[mask == 0.0], 0.0)
+    np.testing.assert_array_equal(pupil.amplitude[mask == 1.0], 1.0)
