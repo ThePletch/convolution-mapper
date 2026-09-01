@@ -7,8 +7,8 @@ use std::collections::HashSet;
 use crate::catalog::kernel_parameters;
 use crate::error::{ErrorModule, PsfFieldError};
 use crate::types::{
-    check_finite, check_positive, Catalog, ErrorTerm, InitMethod, ParamMeta, PriorMean, PriorSpec,
-    Scope, StarRecord,
+    check_finite, check_positive, Catalog, ErrorTerm, FluxInit, KernelKind, MoffatInit, ParamMeta,
+    PhaseInit, PriorSpec, Scope, StarRecord,
 };
 
 /// Moffat profile exponent β, frozen at 2.5 in v1 for the atmospheric seeing kernel.
@@ -185,7 +185,7 @@ fn slots_for_catalog(catalog: &Catalog) -> Vec<Slot> {
                 unit: term.units().to_string(),
                 bounds: term.bounds(),
             }),
-            ErrorTerm::Photometric { .. } => slots.push(Slot {
+            ErrorTerm::Flux { .. } | ErrorTerm::Sky { .. } => slots.push(Slot {
                 term_id: term.term_id().to_string(),
                 role: term.term_id().to_string(),
                 scope: term.scope(),
@@ -194,7 +194,7 @@ fn slots_for_catalog(catalog: &Catalog) -> Vec<Slot> {
                 bounds: term.bounds(),
             }),
             ErrorTerm::Kernel { kernel, .. } => {
-                for (coefficient_index, param) in kernel_parameters(kernel.id).iter().enumerate() {
+                for (coefficient_index, param) in kernel_parameters(*kernel).iter().enumerate() {
                     slots.push(Slot {
                         term_id: term.term_id().to_string(),
                         role: param.role.to_string(),
@@ -288,7 +288,7 @@ pub fn initialize_theta(
             continue;
         }
         let n_slots = match term {
-            ErrorTerm::Kernel { kernel, .. } => kernel_parameters(kernel.id).len(),
+            ErrorTerm::Kernel { kernel, .. } => kernel_parameters(*kernel).len(),
             _ => 1,
         };
         for k in 0..n_slots {
@@ -314,7 +314,7 @@ pub fn initialize_theta(
 }
 
 /// Initialization value for one θ slot. Moffat β is always 2.5; other secondary
-/// kernel coefficients start at 0. Primary slots follow the term's `InitSpec`.
+/// kernel coefficients start at 0. Primary slots follow the term's initialization method.
 fn init_slot_value(
     term: &ErrorTerm,
     role: &str,
@@ -329,16 +329,26 @@ fn init_slot_value(
     if slot_in_term > 0 {
         return Ok(0.0);
     }
-    match term.init().method {
-        InitMethod::Zero => zero_init(term.prior()),
-        InitMethod::FluxSum => {
+    match term {
+        ErrorTerm::Flux {
+            init: FluxInit::FluxSum,
+            ..
+        } => {
             let Some(star) = star else {
                 return Err(input("flux_sum init requires a StarRecord"));
             };
             Ok(star.flux_sum_adu.max(0.0))
         }
-        InitMethod::MoffatFwhm => moffat_alpha_from_fwhm(options.expected_fwhm_px),
-        InitMethod::DefocusMoment => {
+        ErrorTerm::Kernel {
+            kernel: KernelKind::MoffatIso {
+                init: MoffatInit::Fwhm,
+            },
+            ..
+        } => moffat_alpha_from_fwhm(options.expected_fwhm_px),
+        ErrorTerm::Phase {
+            init: PhaseInit::DefocusMoment,
+            ..
+        } => {
             let Some(defocus) = defocus else {
                 return Err(input(
                     "defocus_moment init requires sigma_meas_sq, sigma0_sq, and known_defocus_waves",
@@ -350,6 +360,18 @@ fn init_slot_value(
                 defocus.known_defocus_waves,
             )
         }
+        ErrorTerm::Phase {
+            init: PhaseInit::Zero,
+            prior,
+            ..
+        }
+        | ErrorTerm::Flux {
+            init: FluxInit::Zero,
+            prior,
+            ..
+        }
+        | ErrorTerm::Sky { prior, .. }
+        | ErrorTerm::Kernel { prior, .. } => zero_init(prior),
     }
 }
 
@@ -358,17 +380,11 @@ fn init_slot_value(
 fn zero_init(prior: &PriorSpec) -> Result<f64, PsfFieldError> {
     match prior {
         PriorSpec::None { .. } => Ok(0.0),
-        PriorSpec::Gaussian {
-            mean: PriorMean::Number(mu),
-            ..
-        } => {
-            check_finite("prior.mean", *mu)?;
-            Ok(*mu)
+        PriorSpec::Gaussian { mean, .. } => {
+            check_finite("prior.mean", *mean)?;
+            Ok(*mean)
         }
-        PriorSpec::Gaussian {
-            mean: PriorMean::Init(_),
-            ..
-        } => Err(input(
+        PriorSpec::GaussianFromInit { .. } => Err(input(
             "zero init cannot use gaussian mean \"init\" (rejected at ingest)",
         )),
     }
@@ -409,24 +425,16 @@ pub fn evaluate_gaussian_prior(
 ) -> Result<Option<EvaluatedGaussianPrior>, PsfFieldError> {
     match prior {
         PriorSpec::None { .. } => Ok(None),
-        PriorSpec::Gaussian {
-            mean: PriorMean::Number(mu),
-            sigma,
-            ..
-        } => {
-            let sigma = sigma.ok_or_else(|| input("gaussian prior is missing sigma"))?;
-            check_finite("prior.mean", *mu)?;
-            check_positive("prior.sigma", sigma)?;
-            Ok(Some(EvaluatedGaussianPrior { mu: *mu, sigma }))
+        PriorSpec::Gaussian { mean, sigma, .. } => {
+            check_finite("prior.mean", *mean)?;
+            check_positive("prior.sigma", *sigma)?;
+            Ok(Some(EvaluatedGaussianPrior {
+                mu: *mean,
+                sigma: *sigma,
+            }))
         }
-        PriorSpec::Gaussian {
-            mean: PriorMean::Init(_),
-            sigma_rel,
-            ..
-        } => {
-            let sigma_rel =
-                sigma_rel.ok_or_else(|| input("gaussian prior is missing sigma_rel"))?;
-            check_positive("prior.sigma_rel", sigma_rel)?;
+        PriorSpec::GaussianFromInit { sigma_rel, .. } => {
+            check_positive("prior.sigma_rel", *sigma_rel)?;
             check_finite("a0", a0)?;
             Ok(Some(EvaluatedGaussianPrior {
                 mu: a0,

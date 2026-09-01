@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use crate::error::{ErrorModule, PsfFieldError};
 use crate::types::{
     check_finite, check_positive, check_schema_version, check_term_id, Catalog, ErrorTerm,
-    FieldBasis, InitMethod, KernelId, PriorMean, PriorSpec, Stage2Prior,
+    FieldBasis, KernelKind, PriorSpec, Stage2Prior,
 };
 
 /// Highest Zernike radial order `n` accepted in v1. Higher orders are rejected here,
@@ -37,15 +37,15 @@ pub struct KernelParameter {
 
 /// Kernel coefficients in catalog listing order, used when flattening a term into θ.
 #[must_use]
-pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
-    match id {
-        KernelId::GaussianIso => &[KernelParameter {
+pub fn kernel_parameters(kind: KernelKind) -> &'static [KernelParameter] {
+    match kind {
+        KernelKind::GaussianIso => &[KernelParameter {
             // Isotropic Gaussian width on the detector, in pixels. (C3.6.1)
             role: "sigma_px",
             unit: "px",
             always_frozen: false,
         }],
-        KernelId::MoffatIso => &[
+        KernelKind::MoffatIso { .. } => &[
             KernelParameter {
                 // Moffat scale α on the detector, in pixels. Related to FWHM by
                 // HWHM = α √(2^{1/β} − 1). (C3.6.2, C3.5.2)
@@ -60,7 +60,7 @@ pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
                 always_frozen: true,
             },
         ],
-        KernelId::LinearDrift => &[
+        KernelKind::LinearDrift => &[
             KernelParameter {
                 // Trail length of a unit-sum Gaussian line segment, in detector pixels. (C3.6.3)
                 role: "length_px",
@@ -74,7 +74,7 @@ pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
                 always_frozen: false,
             },
         ],
-        KernelId::FieldRotation => &[
+        KernelKind::FieldRotation => &[
             KernelParameter {
                 // Stage-1 fits a local trail equivalent to field rotation, not the three
                 // global (center, ω) parameters. Length in detector pixels. (C3.6.4, C4.1)
@@ -93,7 +93,8 @@ pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
 
 impl Catalog {
     /// Structural and semantic checks: unique term identifiers, valid Zernike indices,
-    /// field-basis monomials, prior/initialization pairings, and a null bundle matrix in v1.
+    /// field-basis monomials, and finite/positive prior widths. Init/prior pairing and
+    /// a null bundle matrix are rejected while deserializing the catalog JSON.
     pub fn ingest(self) -> Result<Self, PsfFieldError> {
         check_schema_version(&self.schema_version)?;
         if self.catalog_id.is_empty() {
@@ -111,9 +112,6 @@ impl Catalog {
 
         for bundle in &self.bundles {
             check_term_id("bundle_id", &bundle.bundle_id)?;
-            if bundle.matrix.is_some() {
-                return Err(input("bundle.matrix must be null in v1"));
-            }
         }
         Ok(self)
     }
@@ -125,24 +123,10 @@ fn validate_term(term: &ErrorTerm) -> Result<(), PsfFieldError> {
     }
     match term {
         ErrorTerm::Phase { n, m, .. } => validate_zernike_nm(*n, *m)?,
-        ErrorTerm::Photometric { term_id, .. } => {
-            if term_id != "flux" && term_id != "sky" {
-                return Err(input(format!(
-                    "photometric term_id {term_id} is not flux or sky"
-                )));
-            }
-        }
-        ErrorTerm::Kernel { .. } => {}
+        ErrorTerm::Kernel { .. } | ErrorTerm::Flux { .. } | ErrorTerm::Sky { .. } => {}
     }
     validate_bounds(term.bounds())?;
     validate_prior(term.prior())?;
-    validate_init_pairing(term)?;
-    if prior_mean_is_init(term.prior()) && term.init().method == InitMethod::Zero {
-        return Err(input(format!(
-            "term {} pairs mean \"init\" with init method zero",
-            term.term_id()
-        )));
-    }
     Ok(())
 }
 
@@ -230,54 +214,20 @@ fn validate_bounds(bounds: Option<[f64; 2]>) -> Result<(), PsfFieldError> {
     Ok(())
 }
 
-fn prior_mean_is_init(prior: &PriorSpec) -> bool {
-    matches!(
-        prior,
-        PriorSpec::Gaussian {
-            mean: PriorMean::Init(_),
-            ..
-        }
-    )
-}
-
 fn validate_prior(prior: &PriorSpec) -> Result<(), PsfFieldError> {
     match prior {
         PriorSpec::None { stage2 } => validate_stage2_prior(stage2.as_ref()),
         PriorSpec::Gaussian {
             mean,
             sigma,
-            sigma_rel,
             stage2,
         } => {
-            match mean {
-                PriorMean::Number(mu) => {
-                    check_finite("prior.mean", *mu)?;
-                    let Some(sigma) = *sigma else {
-                        return Err(input(
-                            "gaussian prior with numeric mean requires sigma and must omit sigma_rel",
-                        ));
-                    };
-                    if sigma_rel.is_some() {
-                        return Err(input(
-                            "gaussian prior with numeric mean requires sigma and must omit sigma_rel",
-                        ));
-                    }
-                    check_positive("prior.sigma", sigma)?;
-                }
-                PriorMean::Init(_) => {
-                    let Some(sigma_rel) = *sigma_rel else {
-                        return Err(input(
-                            "gaussian prior with mean \"init\" requires sigma_rel and must omit sigma",
-                        ));
-                    };
-                    if sigma.is_some() {
-                        return Err(input(
-                            "gaussian prior with mean \"init\" requires sigma_rel and must omit sigma",
-                        ));
-                    }
-                    check_positive("prior.sigma_rel", sigma_rel)?;
-                }
-            }
+            check_finite("prior.mean", *mean)?;
+            check_positive("prior.sigma", *sigma)?;
+            validate_stage2_prior(stage2.as_ref())
+        }
+        PriorSpec::GaussianFromInit { sigma_rel, stage2 } => {
+            check_positive("prior.sigma_rel", *sigma_rel)?;
             validate_stage2_prior(stage2.as_ref())
         }
     }
@@ -299,31 +249,6 @@ fn validate_stage2_prior(stage2: Option<&Stage2Prior>) -> Result<(), PsfFieldErr
         check_positive(&format!("stage2.sigma[{i}]"), *sigma)?;
     }
     Ok(())
-}
-
-/// Each initialization method applies only to specific terms: `flux_sum` to flux,
-/// `defocus_moment` to Zernike defocus `(n, m) = (2, 0)`, `moffat_fwhm` to a
-/// Moffat kernel. Other pairings are rejected. (C3.5)
-fn validate_init_pairing(term: &ErrorTerm) -> Result<(), PsfFieldError> {
-    let method = term.init().method;
-    let ok = match (method, term) {
-        (InitMethod::Zero, _) => true,
-        (InitMethod::FluxSum, ErrorTerm::Photometric { term_id, .. }) => term_id == "flux",
-        (InitMethod::DefocusMoment, ErrorTerm::Phase { n: 2, m: 0, .. }) => true,
-        (InitMethod::MoffatFwhm, ErrorTerm::Kernel { kernel, .. }) => {
-            kernel.id == KernelId::MoffatIso
-        }
-        _ => false,
-    };
-    if ok {
-        Ok(())
-    } else {
-        Err(input(format!(
-            "init method {} is not valid for term {}",
-            method.as_str(),
-            term.term_id()
-        )))
-    }
 }
 
 #[cfg(test)]
@@ -487,6 +412,13 @@ mod tests {
                     });
                 },
                 needle: "must omit sigma_rel",
+            },
+            Case {
+                name: "non-null bundle matrix",
+                patch: |v| {
+                    v["bundles"][0]["matrix"] = json!([[1.0]]);
+                },
+                needle: "bundle.matrix must be null",
             },
         ];
 
