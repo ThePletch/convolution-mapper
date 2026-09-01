@@ -89,7 +89,7 @@ pub fn check_term_id(kind: &str, value: &str) -> Result<(), PsfFieldError> {
     Ok(())
 }
 
-/// C1.2.1 stamp size.
+/// Postage-stamp side length must be odd and in [15, 63] pixels. (C1.2.1)
 pub fn check_stamp_size(s: usize) -> Result<(), PsfFieldError> {
     if s % 2 == 0 {
         return Err(PsfFieldError::input(
@@ -160,13 +160,21 @@ pub enum Flag {
     Selected,
 }
 
-/// Annotation sidecar for one element of the flat θ vector.
+/// Annotation sidecar for one element of the flat θ vector so later stages can
+/// identify a coefficient without guessing order. (C4.7)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParamMeta {
+    /// Catalog `term_id` this slot came from (for example `zernike_2_0` or `moffat_seeing`).
     pub term_id: String,
+    /// Which quantity this slot holds: `local_value` (a Zernike coefficient), `flux`,
+    /// `sky`, or a kernel parameter name such as `alpha_px`.
     pub role: String,
+    /// Whether this coefficient is shared per star, exposure, or session. Stage-1 still
+    /// fits a local copy; the scope is used when assembling stage-2 field maps. (C4.2)
     pub scope: super::catalog::Scope,
+    /// When true, Levenberg–Marquardt holds this slot at its initialization value.
     pub frozen: bool,
+    /// Physical unit of the stored value (`waves`, `ADU`, `px`, …).
     pub unit: String,
 }
 

@@ -1,7 +1,10 @@
-//! Catalog JSON types (C3).
+//! Catalog JSON types: named aberration, kernel, and photometric terms that the
+//! engine interprets without switching on a human label such as `"coma"`. (C3)
 
 use serde::{Deserialize, Serialize};
 
+/// How widely a coefficient is shared. Stage-1 still fits a local copy per star;
+/// the scope decides how stage-2 groups those copies into a field map. (C4.2)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
@@ -10,6 +13,7 @@ pub enum Scope {
     PerSession,
 }
 
+/// How to choose the starting value of a term's local coefficient before fitting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InitMethod {
@@ -25,6 +29,7 @@ pub struct InitSpec {
     pub method: InitMethod,
 }
 
+/// Closed set of image-space convolution kernels in v1. Unknown identifiers are rejected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KernelId {
@@ -42,10 +47,15 @@ pub struct KernelSpec {
 }
 
 /// Which monomials in normalized field (u, v) a term's stage-2 map may use.
+/// The local stage-1 fit still recovers a single scalar a; the monomials appear in stage-2.
+/// (C3.3)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldBasis {
+    /// Polynomial family; v1 allows only monomials in (u, v). Other families are rejected.
     pub family: FieldFamily,
+    /// Highest total degree max(i+j) among `terms`. Must match that maximum exactly.
     pub degree: u32,
+    /// Included monomials as `[i, j]` pairs meaning the term `u^i v^j`.
     pub terms: Vec<[u32; 2]>,
 }
 
@@ -58,10 +68,13 @@ pub enum FieldFamily {
 /// Optional Gaussian prior on stage-2 field-map coefficients, aligned with [`FieldBasis::terms`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stage2Prior {
+    /// Prior mean for each monomial coefficient c_{ij}, in the same order as `FieldBasis.terms`.
     pub mean: Vec<f64>,
+    /// Prior standard deviation for each monomial coefficient, same length as `mean`.
     pub sigma: Vec<f64>,
 }
 
+/// Mean of a Gaussian prior: a catalog number, or the string `"init"` meaning "use a₀".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum PriorMean {
@@ -85,8 +98,10 @@ pub enum PriorSpec {
     },
     Gaussian {
         mean: PriorMean,
+        /// Absolute prior σ when `mean` is numeric. Omitted when `mean` is `"init"`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         sigma: Option<f64>,
+        /// Relative prior σ when `mean` is `"init"`: σ = max(σ_rel |a₀|, 10⁻³).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         sigma_rel: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -102,7 +117,9 @@ pub enum ErrorTerm {
         term_id: String,
         name: String,
         scope: Scope,
+        /// When true, Levenberg–Marquardt holds the coefficient at initialization.
         frozen: bool,
+        /// When false, the term is omitted from θ entirely (not frozen at zero).
         enabled: bool,
         #[serde(default)]
         bounds: Option<[f64; 2]>,
@@ -111,7 +128,9 @@ pub enum ErrorTerm {
         units: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         report: Option<serde_json::Value>,
+        /// ANSI/OSA radial order n.
         n: u32,
+        /// ANSI/OSA azimuthal index m: positive cosine, negative sine, zero if rotationally symmetric.
         m: i32,
         field_basis: FieldBasis,
     },
@@ -129,6 +148,7 @@ pub enum ErrorTerm {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         report: Option<serde_json::Value>,
         kernel: KernelSpec,
+        /// `None` means the kernel is spatially uniform across the field. (C3.2.2)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         field_basis: Option<FieldBasis>,
     },
@@ -243,16 +263,19 @@ impl InitMethod {
     }
 }
 
-/// Named linear grouping of catalog terms; v1 ships with a null sensitivity matrix.
+/// Named linear grouping of catalog terms. v1 ships with a null mechanical-sensitivity
+/// matrix; a non-null matrix is reserved and rejected. (C3.7.1)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bundle {
     pub bundle_id: String,
     pub name: String,
     pub term_ids: Vec<String>,
+    /// Mechanical sensitivity matrix, shape (n_mech, n_field_coeffs). Must be null in v1.
     pub matrix: Option<serde_json::Value>,
 }
 
-/// One freeze/unfreeze step in the staged stage-1 fit.
+/// One freeze/unfreeze step in the staged stage-1 fit. Each step starts from the
+/// previous step's θ; coefficients not listed stay held. (C4.4)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FitScheduleStep {
     pub name: String,

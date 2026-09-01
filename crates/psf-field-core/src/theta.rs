@@ -1,4 +1,6 @@
-//! Flat θ assembly, freeze masks, init, priors, and schedule (C4).
+//! Flat θ assembly: concatenating enabled catalog terms into one per-star vector,
+//! applying freeze masks and the fit schedule, and evaluating initialization and
+//! Gaussian priors. Levenberg–Marquardt itself lives elsewhere. (C4)
 
 use std::collections::HashSet;
 
@@ -9,22 +11,48 @@ use crate::types::{
     Scope, StarRecord,
 };
 
+/// Moffat profile exponent β, frozen at 2.5 in v1 for the atmospheric seeing kernel.
+/// (C3.6.2)
 pub const MOFFAT_BETA: f64 = 2.5;
+
+/// Floor on a Gaussian prior's σ when the mean is taken from initialization:
+/// σ = max(σ_rel |a₀|, 10⁻³) in the term's units. (C3.4)
 const PRIOR_SIGMA_FLOOR: f64 = 1e-3;
+
+/// Converts extra second-moment width into waves of defocus for the v1 synthetic-corpus
+/// camera. Frozen; not a universal physical constant. (C3.5.1, C10.1)
 const DEFOCUS_MOMENT_FACTOR: f64 = 0.35;
+
+/// Upper clip on the extra-width defocus estimate `d`, in waves RMS. (C3.5.1)
 const DEFOCUS_D_MAX: f64 = 2.0;
+
+/// Fitted defocus a_{2,0} is clipped to ±2 waves RMS after subtracting known diversity.
+/// (C3.5.1)
 const DEFOCUS_A_ABS_MAX: f64 = 2.0;
+
+/// Floor on the zero-aberration model second moment so the defocus ratio cannot
+/// divide by zero, in pixels². (C3.5.1)
 const SIGMA0_SQ_FLOOR: f64 = 1e-12;
 
 fn input(message: impl Into<String>) -> PsfFieldError {
     PsfFieldError::input(ErrorModule::Boundary, message)
 }
 
-/// Stage-1 options that C3/C4 require before Levenberg–Marquardt.
+/// Knobs for assembling and initializing the per-star parameter vector before
+/// Levenberg–Marquardt.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stage1Options {
+    /// Extra freeze flags, one per currently-free catalog coefficient (not the full θ).
+    /// Length must equal the free-parameter count; a mismatch is rejected rather than
+    /// silently truncated. (C4.4)
     pub freeze_mask: Option<Vec<bool>>,
+    /// When true (the default), stage-1 walks the catalog's coarse / mid / full freeze
+    /// schedule. When false, every unfrozen catalog coefficient is free in a single step.
+    /// (C4.4)
     pub use_schedule: bool,
+    /// Expected stellar FWHM in detector pixels, taken from extraction configuration
+    /// rather than measured on this stamp. Used only to initialize Moffat seeing α via
+    /// HWHM = α √(2^{1/β} − 1). (C3.5.2)
     pub expected_fwhm_px: f64,
 }
 
@@ -39,35 +67,49 @@ impl Stage1Options {
     }
 }
 
-/// Precomputed second-moment inputs for C3.5.1 (no forward PSF).
+/// Second-moment inputs for the defocus initialization formula. The zero-aberration
+/// model stamp that supplies σ₀² is not computed here. (C3.5.1)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DefocusMomentInputs {
+    /// Flux-weighted second moment of the observed stamp about its centroid, in pixels².
     pub sigma_meas_sq: f64,
+    /// Same moment on a zero-aberration, unit-flux model stamp of the same size, in pixels².
     pub sigma0_sq: f64,
+    /// Known phase-diversity defocus already applied inside the forward model, in waves RMS.
+    /// Subtracted so the fitted a_{2,0} does not double-count it. (C4.5)
     pub known_defocus_waves: f64,
 }
 
-/// Evaluated Gaussian prior (μ, σ) after C3.5 init.
+/// Gaussian prior (μ, σ) evaluated after the term's initialization value a₀ is known.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EvaluatedGaussianPrior {
+    /// Prior mean in the term's units. Either a catalog number or the initialization a₀.
     pub mu: f64,
+    /// Prior standard deviation in the term's units. For `mean: "init"`,
+    /// σ = max(σ_rel |a₀|, 10⁻³). (C3.4)
     pub sigma: f64,
 }
 
-/// Enabled-term θ layout: sidecar, bounds, and free indices into the full vector.
+/// Layout of enabled catalog terms: metadata sidecar, bounds, and which θ slots are free.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThetaLayout {
+    /// One entry per θ slot, including frozen-but-enabled coefficients (piston, sky, Moffat β).
     pub param_meta: Vec<ParamMeta>,
+    /// Inclusive `[lo, hi]` box for each slot, or `None` if unbounded. Used later to map
+    /// an unconstrained Levenberg–Marquardt variable `u` onto physical θ. (C4.6)
     pub bounds: Vec<Option<[f64; 2]>>,
+    /// Indices into θ of coefficients that Levenberg–Marquardt may vary.
     pub free_index: Vec<usize>,
 }
 
 impl ThetaLayout {
+    /// Number of θ slots, including frozen coefficients.
     #[must_use]
     pub fn n_all(&self) -> usize {
         self.param_meta.len()
     }
 
+    /// Number of unfrozen coefficients (the length `freeze_mask` must match).
     #[must_use]
     pub fn n_free(&self) -> usize {
         self.free_index.len()
@@ -77,33 +119,44 @@ impl ThetaLayout {
 /// Initialized θ together with layout, bounds, and per-slot Gaussian priors.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThetaAssembly {
+    /// Physical coefficients, including frozen slots held at their initialization values.
     pub theta: Vec<f64>,
+    /// Sidecar identifying each slot's catalog term, role, scope, freeze flag, and unit.
     pub param_meta: Vec<ParamMeta>,
+    /// Inclusive bounds aligned with `theta`, or `None` if that slot is unbounded.
     pub bounds: Vec<Option<[f64; 2]>>,
+    /// Indices of slots that are free after catalog flags and `freeze_mask`.
     pub free_index: Vec<usize>,
+    /// Gaussian prior for the term's primary coefficient, or `None` if `family` is `none`.
     pub priors: Vec<Option<EvaluatedGaussianPrior>>,
 }
 
 impl ThetaAssembly {
+    /// Number of θ slots, including frozen coefficients.
     #[must_use]
     pub fn n_all(&self) -> usize {
         self.param_meta.len()
     }
 
+    /// Number of unfrozen coefficients.
     #[must_use]
     pub fn n_free(&self) -> usize {
         self.free_index.len()
     }
 }
 
-/// One freeze/unfreeze step with free indices into the full θ vector.
+/// One freeze/unfreeze step of the staged stage-1 fit, with free indices into full θ.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScheduleStep {
+    /// Catalog name of this step (`coarse`, `mid`, or `full` in the default catalog).
     pub name: String,
+    /// Term identifiers that are unfrozen during this step.
     pub unfrozen_term_ids: Vec<String>,
+    /// θ indices varied in this step (a subset of the catalog-free set).
     pub free_index: Vec<usize>,
 }
 
+/// One flattened coefficient slot before it is copied into `ParamMeta`.
 struct Slot {
     term_id: String,
     role: String,
@@ -113,6 +166,10 @@ struct Slot {
     bounds: Option<[f64; 2]>,
 }
 
+/// Flatten enabled catalog terms in array order: one phase coefficient, then
+/// photometric flux/sky, then each kernel's coefficients in catalog listing order.
+/// Disabled terms (`enabled=false`) are omitted entirely; frozen-but-enabled terms
+/// stay in θ. (C4.1)
 fn slots_for_catalog(catalog: &Catalog) -> Vec<Slot> {
     let mut slots = Vec::new();
     for term in &catalog.terms {
@@ -137,14 +194,19 @@ fn slots_for_catalog(catalog: &Catalog) -> Vec<Slot> {
                 bounds: term.bounds(),
             }),
             ErrorTerm::Kernel { kernel, .. } => {
-                for (k, param) in kernel_parameters(kernel.id).iter().enumerate() {
+                for (coefficient_index, param) in kernel_parameters(kernel.id).iter().enumerate() {
                     slots.push(Slot {
                         term_id: term.term_id().to_string(),
                         role: param.role.to_string(),
                         scope: term.scope(),
                         frozen: term.frozen() || param.always_frozen,
                         unit: param.unit.to_string(),
-                        bounds: if k == 0 { term.bounds() } else { None },
+                        // Catalog bounds apply to the kernel's primary coefficient (first slot).
+                        bounds: if coefficient_index == 0 {
+                            term.bounds()
+                        } else {
+                            None
+                        },
                     });
                 }
             }
@@ -153,7 +215,8 @@ fn slots_for_catalog(catalog: &Catalog) -> Vec<Slot> {
     slots
 }
 
-/// Assemble `param_meta` / `free_index` from enabled catalog terms (C4.1, C4.4).
+/// Assemble parameter metadata and the free-index list from enabled catalog terms.
+/// `freeze_mask`, when present, further freezes a subset of the catalog-free slots. (C4.1, C4.4)
 pub fn assemble_layout(
     catalog: &Catalog,
     options: &Stage1Options,
@@ -189,11 +252,11 @@ pub fn assemble_layout(
                 )));
             }
             let mut kept = Vec::new();
-            for (&idx, &freeze) in catalog_free.iter().zip(mask.iter()) {
+            for (&index, &freeze) in catalog_free.iter().zip(mask.iter()) {
                 if freeze {
-                    param_meta[idx].frozen = true;
+                    param_meta[index].frozen = true;
                 } else {
-                    kept.push(idx);
+                    kept.push(index);
                 }
             }
             kept
@@ -206,7 +269,9 @@ pub fn assemble_layout(
     })
 }
 
-/// Fill θ and Gaussian priors for an assembled layout (C3.4, C3.5).
+/// Fill θ and Gaussian priors for an assembled layout. Phase and photometric
+/// terms contribute one value; kernels contribute one value per listed coefficient.
+/// (C3.4, C3.5)
 pub fn initialize_theta(
     catalog: &Catalog,
     layout: &ThetaLayout,
@@ -217,7 +282,7 @@ pub fn initialize_theta(
     check_positive("expected_fwhm_px", options.expected_fwhm_px)?;
     let mut theta = Vec::with_capacity(layout.n_all());
     let mut priors = Vec::with_capacity(layout.n_all());
-    let mut slot_i = 0usize;
+    let mut slot_index = 0usize;
     for term in &catalog.terms {
         if !term.enabled() {
             continue;
@@ -227,7 +292,7 @@ pub fn initialize_theta(
             _ => 1,
         };
         for k in 0..n_slots {
-            let meta = &layout.param_meta[slot_i];
+            let meta = &layout.param_meta[slot_index];
             let value = init_slot_value(term, &meta.role, k, options, star, defocus)?;
             let prior = if k == 0 {
                 evaluate_gaussian_prior(term.prior(), value)?
@@ -236,10 +301,10 @@ pub fn initialize_theta(
             };
             theta.push(value);
             priors.push(prior);
-            slot_i += 1;
+            slot_index += 1;
         }
     }
-    if slot_i != layout.n_all() {
+    if slot_index != layout.n_all() {
         return Err(PsfFieldError::internal(
             ErrorModule::Boundary,
             "θ slot count does not match catalog layout",
@@ -248,6 +313,8 @@ pub fn initialize_theta(
     Ok((theta, priors))
 }
 
+/// Initialization value for one θ slot. Moffat β is always 2.5; other secondary
+/// kernel coefficients start at 0. Primary slots follow the term's `InitSpec`.
 fn init_slot_value(
     term: &ErrorTerm,
     role: &str,
@@ -286,6 +353,8 @@ fn init_slot_value(
     }
 }
 
+/// Zero-method initialization: 0 if there is no prior, otherwise the numeric Gaussian
+/// mean (for example jitter starts at 0.1 px). `"init"` as a mean is rejected at ingest.
 fn zero_init(prior: &PriorSpec) -> Result<f64, PsfFieldError> {
     match prior {
         PriorSpec::None { .. } => Ok(0.0),
@@ -305,7 +374,9 @@ fn zero_init(prior: &PriorSpec) -> Result<f64, PsfFieldError> {
     }
 }
 
-/// Closed-form C3.5.1 defocus init from second moments, in waves.
+/// Closed-form defocus initialization from second moments, in waves RMS.
+/// `d` is the extra-width estimate; the fitted value subtracts known diversity
+/// so the forward model does not double-count an intentional defocus offset. (C3.5.1)
 pub fn defocus_moment_init(
     sigma_meas_sq: f64,
     sigma0_sq: f64,
@@ -314,20 +385,24 @@ pub fn defocus_moment_init(
     check_finite("sigma_meas_sq", sigma_meas_sq)?;
     check_finite("sigma0_sq", sigma0_sq)?;
     check_finite("known_defocus_waves", known_defocus_waves)?;
+    // Extra second-moment width relative to a diffraction-limited model stamp, never negative.
     let extra = (sigma_meas_sq - sigma0_sq).max(0.0);
     let denom = sigma0_sq.max(SIGMA0_SQ_FLOOR);
     let d = (DEFOCUS_MOMENT_FACTOR * extra / denom).clamp(0.0, DEFOCUS_D_MAX);
     Ok((d - known_defocus_waves).clamp(-DEFOCUS_A_ABS_MAX, DEFOCUS_A_ABS_MAX))
 }
 
-/// Moffat α from FWHM with frozen β = 2.5 (C3.5.2).
+/// Moffat scale α from an expected FWHM, with frozen β = 2.5.
+/// The Moffat half-width at half-maximum is α √(2^{1/β} − 1), so
+/// α = FWHM / (2 √(2^{1/β} − 1)). (C3.5.2)
 pub fn moffat_alpha_from_fwhm(expected_fwhm_px: f64) -> Result<f64, PsfFieldError> {
     check_positive("expected_fwhm_px", expected_fwhm_px)?;
     let half_width_factor = (2.0_f64.powf(1.0 / MOFFAT_BETA) - 1.0).sqrt();
     Ok(expected_fwhm_px / (2.0 * half_width_factor))
 }
 
-/// Evaluate a term prior after init. `family: none` yields `None`.
+/// Evaluate a term's Gaussian prior after initialization. `family: none` yields `None`.
+/// When `mean` is `"init"`, μ is the initialization value a₀ and σ scales with |a₀|. (C3.4)
 pub fn evaluate_gaussian_prior(
     prior: &PriorSpec,
     a0: f64,
@@ -361,11 +436,14 @@ pub fn evaluate_gaussian_prior(
     }
 }
 
+/// Extra residual row contributed by a Gaussian prior: (a − μ) / σ. (C3.4)
 #[must_use]
 pub fn prior_residual(a: f64, prior: &EvaluatedGaussianPrior) -> f64 {
     (a - prior.mu) / prior.sigma
 }
 
+/// Numerically stable logistic σ(u) = 1 / (1 + e^{-u}), used to map an unconstrained
+/// Levenberg–Marquardt variable onto a bounded physical coefficient.
 fn logistic(u: f64) -> f64 {
     if u >= 0.0 {
         let e = (-u).exp();
@@ -376,19 +454,21 @@ fn logistic(u: f64) -> f64 {
     }
 }
 
-/// C4.6 map \(θ(u) = lo + (hi-lo)\,σ(u)\).
+/// Map unconstrained `u` onto a bounded physical coefficient:
+/// θ(u) = lo + (hi − lo) σ(u) with σ the logistic. (C4.6)
 #[must_use]
 pub fn theta_from_unbounded(u: f64, lo: f64, hi: f64) -> f64 {
     lo + (hi - lo) * logistic(u)
 }
 
-/// C4.6 derivative \(dθ/du = (hi-lo)\,σ(1-σ)\).
+/// Jacobian factor dθ/du = (hi − lo) σ(1 − σ) for the logistic bound map. (C4.6)
 #[must_use]
 pub fn dtheta_du(u: f64, lo: f64, hi: f64) -> f64 {
     let s = logistic(u);
     (hi - lo) * s * (1.0 - s)
 }
 
+/// Assemble layout, initialization values, and priors for one star.
 pub fn assemble_theta(
     catalog: &Catalog,
     options: &Stage1Options,
@@ -406,7 +486,9 @@ pub fn assemble_theta(
     })
 }
 
-/// Freeze/unfreeze steps. After the last step the covariance free set is `assembly.free_index`.
+/// Freeze/unfreeze steps from the catalog schedule. Each step holds coefficients
+/// that are not in `unfrozen_term_ids` at their current value. After the last step,
+/// the free set used for covariance is the full unfrozen catalog set. (C4.4)
 pub fn schedule_steps(
     catalog: &Catalog,
     assembly: &ThetaAssembly,
@@ -415,8 +497,8 @@ pub fn schedule_steps(
     if !options.use_schedule {
         let mut ids = Vec::new();
         let mut seen = HashSet::new();
-        for &idx in &assembly.free_index {
-            let term_id = &assembly.param_meta[idx].term_id;
+        for &index in &assembly.free_index {
+            let term_id = &assembly.param_meta[index].term_id;
             if seen.insert(term_id.clone()) {
                 ids.push(term_id.clone());
             }
@@ -430,8 +512,8 @@ pub fn schedule_steps(
 
     let n_all = assembly.n_all();
     let mut is_catalog_free = vec![false; n_all];
-    for &idx in &assembly.free_index {
-        is_catalog_free[idx] = true;
+    for &index in &assembly.free_index {
+        is_catalog_free[index] = true;
     }
 
     catalog

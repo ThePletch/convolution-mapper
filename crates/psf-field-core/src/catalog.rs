@@ -1,4 +1,6 @@
-//! Semantic catalog ingest (C3).
+//! Semantic catalog ingest: validating aberration terms, field bases, priors, and
+//! initialization methods before they are assembled into the stage-1 parameter vector.
+//! (C3)
 
 use std::collections::HashSet;
 
@@ -8,37 +10,51 @@ use crate::types::{
     FieldBasis, InitMethod, KernelId, PriorMean, PriorSpec, Stage2Prior,
 };
 
+/// Highest Zernike radial order `n` accepted in v1. Higher orders are rejected here,
+/// not later during evaluation. (C2.2)
 const MAX_ZERNIKE_N: u32 = 15;
+
+/// Highest polynomial degree of a monomial field map in v1: constant, linear, or quadratic.
+/// (C3.3)
 const MAX_FIELD_DEGREE: u32 = 2;
 
 fn input(message: impl Into<String>) -> PsfFieldError {
     PsfFieldError::input(ErrorModule::Boundary, message)
 }
 
-/// One local kernel coefficient in catalog/C3.6 order.
+/// One local kernel coefficient, in the order the catalog lists kernel parameters.
+/// Stage-1 concatenates these after photometric slots. (C3.6, C4.1)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KernelParameter {
+    /// Name stored on `ParamMeta.role` (for example `sigma_px` or `alpha_px`).
     pub role: &'static str,
+    /// Physical unit of this coefficient (pixels, radians, seconds, or dimensionless).
     pub unit: &'static str,
+    /// When true, this coefficient stays frozen even if the parent catalog term is free.
+    /// Moffat `beta` is frozen at 2.5 in v1 so it is never a Levenberg–Marquardt unknown.
     pub always_frozen: bool,
 }
 
-/// Kernel parameters in the C3.6 listing order used by stage-1 θ.
+/// Kernel coefficients in catalog listing order, used when flattening a term into θ.
 #[must_use]
 pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
     match id {
         KernelId::GaussianIso => &[KernelParameter {
+            // Isotropic Gaussian width on the detector, in pixels. (C3.6.1)
             role: "sigma_px",
             unit: "px",
             always_frozen: false,
         }],
         KernelId::MoffatIso => &[
             KernelParameter {
+                // Moffat scale α on the detector, in pixels. Related to FWHM by
+                // HWHM = α √(2^{1/β} − 1). (C3.6.2, C3.5.2)
                 role: "alpha_px",
                 unit: "px",
                 always_frozen: false,
             },
             KernelParameter {
+                // Moffat exponent β; dimensionless and frozen in v1. (C3.6.2)
                 role: "beta",
                 unit: "1",
                 always_frozen: true,
@@ -46,11 +62,13 @@ pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
         ],
         KernelId::LinearDrift => &[
             KernelParameter {
+                // Trail length of a unit-sum Gaussian line segment, in detector pixels. (C3.6.3)
                 role: "length_px",
                 unit: "px",
                 always_frozen: false,
             },
             KernelParameter {
+                // Trail direction from detector +x toward +y, in radians. (C3.6.3)
                 role: "angle_rad",
                 unit: "rad",
                 always_frozen: false,
@@ -58,6 +76,8 @@ pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
         ],
         KernelId::FieldRotation => &[
             KernelParameter {
+                // Stage-1 fits a local trail equivalent to field rotation, not the three
+                // global (center, ω) parameters. Length in detector pixels. (C3.6.4, C4.1)
                 role: "length_px",
                 unit: "px",
                 always_frozen: false,
@@ -70,16 +90,19 @@ pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
         ],
         KernelId::PeriodicError => &[
             KernelParameter {
+                // Peak-to-center amplitude of the sinusoidal RA trail, in detector pixels. (C3.6.5)
                 role: "amp_px",
                 unit: "px",
                 always_frozen: false,
             },
             KernelParameter {
+                // Period of the mount periodic error, in seconds. Often frozen from metadata. (C3.6.5)
                 role: "period_s",
                 unit: "s",
                 always_frozen: false,
             },
             KernelParameter {
+                // Phase of the sinusoid at exposure midpoint, in radians. (C3.6.5, NOR.11)
                 role: "phase_rad",
                 unit: "rad",
                 always_frozen: false,
@@ -89,6 +112,8 @@ pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
 }
 
 impl Catalog {
+    /// Structural and semantic checks: unique term identifiers, valid Zernike indices,
+    /// field-basis monomials, prior/initialization pairings, and a null bundle matrix in v1.
     pub fn ingest(self) -> Result<Self, PsfFieldError> {
         check_schema_version(&self.schema_version)?;
         if self.catalog_id.is_empty() {
@@ -141,6 +166,9 @@ fn validate_term(term: &ErrorTerm) -> Result<(), PsfFieldError> {
     Ok(())
 }
 
+/// Reject ANSI/OSA indices that are not a Zernike mode: radial order `n` and
+/// azimuthal frequency `m` must satisfy `|m| ≤ n` with `n − |m|` even, and `n`
+/// must not exceed the v1 cap. (C2.1, C2.2)
 pub fn validate_zernike_nm(n: u32, m: i32) -> Result<(), PsfFieldError> {
     if n > MAX_ZERNIKE_N {
         return Err(input(format!(
@@ -159,6 +187,10 @@ pub fn validate_zernike_nm(n: u32, m: i32) -> Result<(), PsfFieldError> {
     Ok(())
 }
 
+/// A field basis is a list of monomials `u^i v^j` in normalized field coordinates.
+/// `degree` must equal `max(i+j)`, pairs must be unique, and they must be sorted
+/// by total degree then by the `v` exponent so the default catalog JSON ingests.
+/// (C3.3)
 pub fn validate_field_basis(basis: &FieldBasis) -> Result<(), PsfFieldError> {
     if basis.degree > MAX_FIELD_DEGREE {
         return Err(input(format!(
@@ -185,7 +217,8 @@ pub fn validate_field_basis(basis: &FieldBasis) -> Result<(), PsfFieldError> {
             return Err(input(format!("duplicate field basis term [{i}, {j}]")));
         }
         max_degree = max_degree.max(degree);
-        // C3.3 writes (i+j, i); the normative default catalog lists monomials by (i+j, j).
+        // The catalog JSON lists monomials by (i+j, j). The prose sort key is (i+j, i);
+        // ingest follows the JSON so the shipped default catalog is accepted. (C3.3)
         let key = (degree, j);
         if let Some(prev) = previous {
             if key <= prev {
@@ -288,6 +321,9 @@ fn validate_stage2_prior(stage2: Option<&Stage2Prior>) -> Result<(), PsfFieldErr
     Ok(())
 }
 
+/// Each initialization method applies only to specific terms: `flux_sum` to flux,
+/// `defocus_moment` to Zernike defocus `(n, m) = (2, 0)`, `moffat_fwhm` to a
+/// Moffat kernel. Other pairings are rejected. (C3.5)
 fn validate_init_pairing(term: &ErrorTerm) -> Result<(), PsfFieldError> {
     let method = term.init().method;
     let ok = match (method, term) {
