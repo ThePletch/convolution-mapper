@@ -92,7 +92,6 @@ class KernelSpec(BaseModel):
         "moffat_iso",
         "linear_drift",
         "field_rotation",
-        "periodic_error",
     ]
 
 

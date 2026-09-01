@@ -37,7 +37,6 @@ pub enum KernelId {
     MoffatIso,
     LinearDrift,
     FieldRotation,
-    PeriodicError,
 }
 
 /// Which closed-form image-space kernel a catalog term implements.

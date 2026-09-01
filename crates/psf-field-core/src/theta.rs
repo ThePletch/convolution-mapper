@@ -627,7 +627,6 @@ mod tests {
             "zernike_1_m1",
             "linear_drift",
             "field_rotation",
-            "periodic_error",
         ] {
             assert!(!ids.contains(disabled), "{disabled} should be omitted");
         }

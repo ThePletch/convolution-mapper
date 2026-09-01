@@ -114,8 +114,7 @@
             "gaussian_iso",
             "moffat_iso",
             "linear_drift",
-            "field_rotation",
-            "periodic_error"
+            "field_rotation"
           ]
         }
       }

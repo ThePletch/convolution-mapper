@@ -297,20 +297,6 @@
       "init": { "method": "zero" },
       "prior": { "family": "none" },
       "units": "rad/s"
-    },
-    {
-      "term_id": "periodic_error",
-      "name": "Periodic error",
-      "kind": "kernel",
-      "scope": "per_exposure",
-      "frozen": true,
-      "enabled": false,
-      "kernel": { "id": "periodic_error" },
-      "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
-      "bounds": [0.0, 20.0],
-      "init": { "method": "zero" },
-      "prior": { "family": "none" },
-      "units": "px"
     }
   ],
   "bundles": [

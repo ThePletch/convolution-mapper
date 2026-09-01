@@ -88,26 +88,6 @@ pub fn kernel_parameters(id: KernelId) -> &'static [KernelParameter] {
                 always_frozen: false,
             },
         ],
-        KernelId::PeriodicError => &[
-            KernelParameter {
-                // Peak-to-center amplitude of the sinusoidal RA trail, in detector pixels. (C3.6.5)
-                role: "amp_px",
-                unit: "px",
-                always_frozen: false,
-            },
-            KernelParameter {
-                // Period of the mount periodic error, in seconds. Often frozen from metadata. (C3.6.5)
-                role: "period_s",
-                unit: "s",
-                always_frozen: false,
-            },
-            KernelParameter {
-                // Phase of the sinusoid at exposure midpoint, in radians. (C3.6.5, NOR.11)
-                role: "phase_rad",
-                unit: "rad",
-                always_frozen: false,
-            },
-        ],
     }
 }
 
