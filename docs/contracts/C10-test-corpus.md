@@ -133,4 +133,4 @@ A noiseless stamp generated with the C10.1 camera, `known_defocus_waves=0.3`, tr
 
 - Use Tiny Tim, Zemax, or any external PSF renderer as truth.
 - Place stars within 40 px of the edge.
-- Enable `periodic_error` or `field_rotation` in v1 scoring (those modules have unit tests on `K` only, C3.6, not end-to-end recovery in v1).
+- Enable `field_rotation` in v1 scoring (that module has unit tests on \(K\) only, C3.6, not end-to-end recovery in v1).
