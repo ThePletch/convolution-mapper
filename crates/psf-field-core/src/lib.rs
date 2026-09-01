@@ -1,4 +1,7 @@
 //! PSF field modeler core.
+//!
+//! Types, ingest, errors, and the generic `(n, m)` Zernike engine live here.
+//! Other numeric modules are unimplemented until their contracts are built.
 
 pub mod catalog;
 pub mod diag;
