@@ -6,12 +6,12 @@ mod inputs;
 mod outputs;
 
 pub use catalog::{
-    Bundle, Catalog, ErrorTerm, FieldBasis, FitScheduleStep, InitMethod, InitSpec, KernelId,
-    KernelSpec, PriorMean, PriorSpec, Scope, Stage2Prior,
+    Bundle, Catalog, ErrorTerm, FieldBasis, FitScheduleStep, FluxInit, KernelKind, MoffatInit,
+    NullMatrix, PhaseInit, PhotometricId, PriorSpec, Scope, Stage2Prior,
 };
 pub use common::{
-    check_id, check_schema_version, check_stamp_size, check_term_id, DegeneratePair, Flag,
-    ParamMeta, SCHEMA_MAJOR, SCHEMA_VERSION,
+    check_finite, check_id, check_positive, check_schema_version, check_stamp_size, check_term_id,
+    DegeneratePair, Flag, ParamMeta, SCHEMA_MAJOR, SCHEMA_VERSION,
 };
 pub use inputs::{
     ExtractionConfig, ImageMeta, PixelMaskBits, PupilSpec, Stage1InputConfig, StarRecord,
