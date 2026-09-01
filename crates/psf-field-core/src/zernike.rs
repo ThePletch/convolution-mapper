@@ -1,4 +1,5 @@
-//! Generic `(n, m)` Zernike engine (C2).
+//! Generic `(n, m)` Zernike engine: orthonormal pupil-phase modes parameterized by
+//! ANSI/OSA indices, sampled on a discrete mask, without forming a detector PSF. (C2)
 
 use ndarray::Array2;
 
@@ -6,20 +7,28 @@ use crate::error::{ErrorModule, PsfFieldError};
 use crate::pupil::{eta_at_row, xi_at_column};
 use crate::types::PupilSpec;
 
-/// Frozen maximum radial order for v1 evaluation (C2.2).
+/// Highest radial order `n` the engine will evaluate in v1. Catalog ingest also
+/// rejects modes above this cap. (C2.2)
 pub const MAX_RADIAL_ORDER: u32 = 15;
 
+/// Discrete RMS below this threshold means the mode is identically zero on the
+/// supplied mask (would divide by zero when normalizing). (C2.4)
 const RMS_ZERO_THRESHOLD: f64 = 1e-15;
 
-/// One term in `Φ = 2π Σ a_k Z^{(k)}` (C2.6). `waves_rms` is `a_k`.
+/// One term in the pupil phase Φ = 2π Σ a_k Z^{(k)}. Coefficients `a_k` are in
+/// waves RMS over the supplied mask. (C2.6)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PhaseCoefficient {
+    /// ANSI/OSA radial order n.
     pub n: u32,
+    /// ANSI/OSA azimuthal index m: cosine for m > 0, sine for m < 0, radial-only for m = 0.
     pub m: i32,
+    /// Coefficient a_k in waves RMS (root-mean-square over the pupil mask).
     pub waves_rms: f64,
 }
 
-/// Reject indices that are not ANSI/OSA with `n ≤ 15`.
+/// Reject indices that are not a Zernike mode under ANSI/OSA: `|m| ≤ n`,
+/// `n − |m|` even, and `n` at most the v1 cap. (C2.1)
 pub fn validate_n_m(n: u32, m: i32) -> Result<(), PsfFieldError> {
     if n > MAX_RADIAL_ORDER {
         return Err(PsfFieldError::input(
@@ -37,13 +46,15 @@ pub fn validate_n_m(n: u32, m: i32) -> Result<(), PsfFieldError> {
     Ok(())
 }
 
-/// Sequential OSA index `j = (n(n+2) + m) / 2` (C2.1). Reports and ordering only.
+/// Sequential OSA index j = (n(n+2) + m) / 2, used for ordering and reports only.
+/// The engine API is keyed by `(n, m)`, not by this integer. (C2.1)
 pub fn osa_index(n: u32, m: i32) -> Result<i32, PsfFieldError> {
     validate_n_m(n, m)?;
     Ok((n as i32 * (n as i32 + 2) + m) / 2)
 }
 
-/// `R_n^{|m|}(ρ)` (C2.2).
+/// Radial polynomial R_n^{|m|}(ρ) on the unit disk. ρ is the dimensionless pupil
+/// radius (0 at center, 1 at the rim). (C2.2)
 pub fn radial_polynomial(n: u32, m_abs: u32, rho: f64) -> Result<f64, PsfFieldError> {
     if n > MAX_RADIAL_ORDER {
         return Err(PsfFieldError::input(
@@ -60,8 +71,9 @@ pub fn radial_polynomial(n: u32, m_abs: u32, rho: f64) -> Result<f64, PsfFieldEr
     Ok(radial_polynomial_horner(n, m_abs, rho))
 }
 
-/// Horner product form of C2.2: successive coefficient ratios avoid factorial
-/// overflow and stay stable near `ρ = 0` (unlike a high-to-low `ρ^n` Horner).
+/// Horner product form of the radial polynomial: successive coefficient ratios avoid
+/// factorial overflow and stay stable near ρ = 0 (unlike a high-to-low ρ^n Horner).
+/// `p = (n − |m|)/2` is the number of radial nodes; `q = (n + |m|)/2`.
 fn radial_polynomial_horner(n: u32, m_abs: u32, rho: f64) -> f64 {
     let p = (n - m_abs) / 2;
     let q = (n + m_abs) / 2;
@@ -83,18 +95,24 @@ fn radial_polynomial_horner(n: u32, m_abs: u32, rho: f64) -> f64 {
     }
 }
 
-/// `N_n^m = sqrt(2(n+1) / (1 + δ_{m,0}))` (C2.3).
+/// Analytic RMS factor N_n^m = √(2(n+1) / (1 + δ_{m,0})) so that Z̃ has unit RMS
+/// on the continuous unit disk. The Kronecker δ_{m,0} is 1 for rotationally
+/// symmetric modes and 0 otherwise. (C2.3)
 pub fn analytic_normalization(n: u32, m: i32) -> Result<f64, PsfFieldError> {
     validate_n_m(n, m)?;
     Ok(analytic_normalization_value(n, m))
 }
 
 fn analytic_normalization_value(n: u32, m: i32) -> f64 {
+    // δ_{m,0}: rotationally symmetric modes (m = 0) get a smaller N so piston, defocus,
+    // spherical, … still have unit RMS on the disk.
     let delta_m0 = if m == 0 { 1.0 } else { 0.0 };
     (2.0 * (f64::from(n) + 1.0) / (1.0 + delta_m0)).sqrt()
 }
 
-/// Analytic `Z̃_n^m(ρ, θ)` on the unit disk (C2.3), before discrete RMS.
+/// Analytic Z̃_n^m(ρ, θ) on the continuous unit disk, before discrete-mask RMS.
+/// θ is the pupil polar angle (atan2(η, ξ)); m > 0 multiplies by cos(mθ),
+/// m < 0 by sin(|m|θ). (C2.3, NOR.10)
 pub fn analytic_zernike(n: u32, m: i32, rho: f64, theta: f64) -> Result<f64, PsfFieldError> {
     validate_n_m(n, m)?;
     Ok(analytic_zernike_at(n, m, rho, theta))
@@ -112,7 +130,9 @@ fn analytic_zernike_at(n: u32, m: i32, rho: f64, theta: f64) -> f64 {
     }
 }
 
-/// Discrete RMS of a screen over the mask (C2.4).
+/// Discrete RMS of a screen over the pupil mask: √((1/S) Σ M_pq Z_pq²), where S is
+/// the number of unmasked pixels. Coefficients in waves RMS are defined with this
+/// discrete inner product, not the continuous disk. (C2.4)
 pub fn discrete_rms(values: &Array2<f64>, mask: &[Vec<f64>]) -> Result<f64, PsfFieldError> {
     let (n_row, n_col) = values.dim();
     if mask.len() != n_row || mask.iter().any(|row| row.len() != n_col) {
@@ -140,7 +160,9 @@ pub fn discrete_rms(values: &Array2<f64>, mask: &[Vec<f64>]) -> Result<f64, PsfF
     Ok((sum_m_z2 / sum_m).sqrt())
 }
 
-/// Pre-normalization `Z̃` on the pupil grid (C2.3 sampled; C2.4 zeros `M=0` and `ρ>1`).
+/// Pre-normalization Z̃ sampled on the pupil grid. Pixels with mask 0 or ρ > 1 are
+/// zero. This is the quantity compared to closed-form √3 samples before dividing
+/// by discrete RMS. (C2.3, C2.4, C2.8.7)
 pub fn analytic_basis_screen(
     n: u32,
     m: i32,
@@ -150,14 +172,17 @@ pub fn analytic_basis_screen(
     Ok(screen)
 }
 
-/// Discrete-RMS-normalized `Z` (C2.4).
+/// Discrete-RMS-normalized Z so that (1/S) Σ M Z² = 1 on the supplied mask.
+/// Runtime always divides by the sampled RMS even when it is close to 1. (C2.4)
 pub fn basis_screen(n: u32, m: i32, pupil: &PupilSpec) -> Result<Array2<f64>, PsfFieldError> {
     let (mut screen, rms, _) = analytic_screen_and_rms(n, m, pupil)?;
     screen /= rms;
     Ok(screen)
 }
 
-/// Phase `Φ = 2π Σ a_k Z^{(k)}` in radians (C2.6).
+/// Pupil phase Φ = 2π Σ a_k Z^{(k)} in radians. The 2π converts waves RMS into
+/// radians of optical path. Piston (n=0, m=0) is evaluated if requested even though
+/// it does not change |FT{A e^{iΦ}}|². (C2.6)
 pub fn phase_screen(
     terms: &[PhaseCoefficient],
     pupil: &PupilSpec,
@@ -171,13 +196,16 @@ pub fn phase_screen(
     Ok(phi)
 }
 
-/// `∂Φ/∂a_k = 2π Z^{(k)}` (C2.7).
+/// ∂Φ/∂a_k = 2π Z^{(k)}. The PSF Jacobian consumes this factor; this engine does
+/// not form a detector image. (C2.7)
 pub fn phase_derivative(n: u32, m: i32, pupil: &PupilSpec) -> Result<Array2<f64>, PsfFieldError> {
     let z = basis_screen(n, m, pupil)?;
     Ok(z * (2.0 * std::f64::consts::PI))
 }
 
-/// Gram matrix `G_ij = (1/S) Σ M Z^{(i)} Z^{(j)}` (C2.5). Not Gram–Schmidt.
+/// Gram matrix G_ij = (1/S) Σ M Z^{(i)} Z^{(j)} of discrete-normalized modes.
+/// Reported as a diagnostic of mask-induced non-orthogonality; v1 does not
+/// apply Gram–Schmidt. (C2.5)
 pub fn gram_matrix(modes: &[(u32, i32)], pupil: &PupilSpec) -> Result<Array2<f64>, PsfFieldError> {
     let n_modes = modes.len();
     let mut screens = Vec::with_capacity(n_modes);
@@ -232,6 +260,8 @@ fn pupil_grid_size(pupil: &PupilSpec) -> Result<usize, PsfFieldError> {
     Ok(n)
 }
 
+/// Sample analytic Z̃ on the pupil grid and accumulate discrete RMS in one pass.
+/// `sum_m` is S, the unmasked pixel count.
 fn analytic_screen_and_rms(
     n: u32,
     m: i32,
@@ -252,6 +282,8 @@ fn analytic_screen_and_rms(
             }
             let xi = xi_at_column(q, n_pupil);
             let rho = xi.hypot(eta);
+            // Analytic Z̃ is defined on the unit disk; outside it the mode is zero
+            // even if a non-circular mask were 1 there.
             if rho > 1.0 {
                 continue;
             }
@@ -283,9 +315,13 @@ mod tests {
     use crate::pupil::{circular_pupil_spec, eta_at_row, rho_theta, xi_at_column};
     use ndarray::Array2;
 
+    /// v1 circular-mask grid used by closed-form Zernike checks (not a fast unit grid).
     const CONTRACT_N_PUPIL: i64 = 256;
+    /// FFT length paired with `CONTRACT_N_PUPIL` in the forward pipeline; unused here.
     const CONTRACT_N_FFT: i64 = 1024;
+    /// Tiny grid for engine unit tests that do not need the contract-sized pupil.
     const UNIT_N_PUPIL: i64 = 32;
+    /// Odd stamp side length used by the ignored PSF-level checks (filled in later).
     const STAMP_SIZE: usize = 31;
 
     fn contract_pupil() -> PupilSpec {
@@ -391,6 +427,8 @@ mod tests {
     }
 
     fn max_azimuthal_relative_rms(intensity: &[Vec<f64>], c_star: f64) -> f64 {
+        // Annuli of 0.25 px exclude the Airy radial gradient; a Seidel-like m=1 leak
+        // would show up as azimuthal RMS inside each ring. (C2.8.2)
         const ANNULUS_WIDTH_PX: f64 = 0.25;
         let n = intensity.len();
         let mut max_rel = 0.0;
@@ -426,6 +464,8 @@ mod tests {
 
     #[test]
     fn c2_8_7_continuous_analytic_defocus_samples() {
+        // Defocus Z̃_2^0 = √3 (2ρ² − 1), so the rim (ρ=1) is +√3 and the origin is −√3.
+        // Compared to 1 ulp; this does not use a sampled pupil grid. (C2.8.7)
         let expected = 3.0_f64.sqrt();
         let at_rim = analytic_zernike(2, 0, 1.0, 0.0).unwrap();
         let at_origin = analytic_zernike(2, 0, 0.0, 0.0).unwrap();
@@ -442,6 +482,8 @@ mod tests {
 
     #[test]
     fn c2_8_7_sampled_analytic_defocus_pre_normalization() {
+        // On N_p = 256 the rim sample is not exactly ρ=1 (max on-axis ρ ≈ 0.996).
+        // Do not stretch ξ, η to force a ρ=1 pixel. (C2.8.7)
         let pupil = contract_pupil();
         let screen = analytic_basis_screen(2, 0, &pupil).unwrap();
         let n = CONTRACT_N_PUPIL as usize;
@@ -521,6 +563,9 @@ mod tests {
 
     #[test]
     fn gram_matrix_circular_mask_n_le_6() {
+        // Off-diagonal inner products on a circular mask should stay small; larger
+        // values on a non-circular mask are expected and are reported, not treated as
+        // a bug. v1 does not Gram–Schmidt. (C2.5)
         let modes = valid_modes_through(6);
         let gram = gram_matrix(&modes, &contract_pupil()).unwrap();
         assert_gram_diagonal_one(&gram, &modes);
@@ -553,6 +598,9 @@ mod tests {
 
     #[test]
     fn pre_normalization_rms_near_one_on_contract_grid() {
+        // On the v1 circular mask at N_p ≥ 256, sampled RMS of Z̃ should stay within
+        // 2% of the continuous-disk value 1 for modes with n ≤ 8. Runtime still divides
+        // by the sampled RMS. (C2.4)
         let pupil = contract_pupil();
         for &(n, m) in &valid_modes_through(8) {
             let z_tilde = analytic_basis_screen(n, m, &pupil).unwrap();
@@ -647,6 +695,8 @@ mod tests {
         assert_eq!(err.module, ErrorModule::Zernike);
     }
 
+    /// Piston is a global phase; intensity |FT{A e^{iΦ}}|² must not change when a_{0,0}
+    /// goes from 0 to 1 wave. (C2.8.1)
     #[test]
     #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_1_piston_independence() {
@@ -661,6 +711,7 @@ mod tests {
         assert!(max_abs_diff / max_i0 < 1e-10);
     }
 
+    /// Zero aberrations must yield a centered Airy pattern with no azimuthal m=1 leak. (C2.8.2)
     #[test]
     #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_2_zero_coefficients_airy_centered_azimuthal() {
@@ -671,6 +722,7 @@ mod tests {
         assert!(max_azimuthal_relative_rms(&intensity, c_star) < 1e-4);
     }
 
+    /// Defocus is even in a_{2,0}: I(+α) must match I(−α). (C2.8.3)
     #[test]
     #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_3_defocus_evenness() {
@@ -689,6 +741,7 @@ mod tests {
         assert!(max_azimuthal_relative_rms(&intensity_neg, c_star) < 1e-4);
     }
 
+    /// Even function of defocus ⇒ Jacobian column for a_{2,0} vanishes at a=0. (C2.8.4)
     #[test]
     #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_4_defocus_at_zero_vanishing_jacobian_column() {
@@ -699,6 +752,7 @@ mod tests {
         assert!(n0 < 1e-8 * n_defocus);
     }
 
+    /// Orthonormal Zernike coma does not shift the first-moment centroid; Seidel ρ³ cosθ would. (C2.8.5)
     #[test]
     #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_5_zernike_coma_centroid_preserving() {
@@ -711,6 +765,7 @@ mod tests {
         }
     }
 
+    /// Flipping the sign of a_{3,1} must reverse the coma flare across the stamp center. (C2.8.6)
     #[test]
     #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_6_coma_sign_flips_the_flare() {
