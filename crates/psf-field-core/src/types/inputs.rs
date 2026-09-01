@@ -309,7 +309,19 @@ impl PupilSpec {
                 ));
             }
         }
-        Ok(self)
+        // Amplitude is undefined off the aperture; zero it so P = A M exp(iΦ)
+        // cannot leak a non-zero field through a masked pixel. (C9.5)
+        let mut pupil = self;
+        if let Some(amplitude) = pupil.amplitude.as_mut() {
+            for (row, mask_row) in amplitude.iter_mut().zip(&pupil.mask) {
+                for (value, &mask) in row.iter_mut().zip(mask_row) {
+                    if mask == 0.0 {
+                        *value = 0.0;
+                    }
+                }
+            }
+        }
+        Ok(pupil)
     }
 }
 

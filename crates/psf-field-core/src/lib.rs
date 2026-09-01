@@ -1,7 +1,9 @@
 //! PSF field modeler core.
 //!
-//! Types, ingest, errors, and the generic `(n, m)` Zernike engine live here.
-//! Other numeric modules are unimplemented until their contracts are built.
+//! Types, ingest, errors, the generic `(n, m)` Zernike engine, and the pupil-to-
+//! FFT-grid intensity map (C9.1 steps 1–5) live here. Later pipeline stages
+//! (kernels, resample, Jacobian, LM) are unimplemented until their contracts
+//! are built.
 
 pub mod catalog;
 pub mod diag;

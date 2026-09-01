@@ -221,4 +221,21 @@ mod tests {
         assert_eq!(catalog, again);
         assert_eq!(catalog.catalog_id, "psf_field_v1_default");
     }
+
+    #[test]
+    fn ingest_zeros_amplitude_outside_the_mask() {
+        let mut pupil = crate::pupil::circular_pupil_spec(128, 512);
+        pupil.amplitude = Some(vec![vec![1.0; 128]; 128]);
+        let ingested = pupil.ingest().unwrap();
+        let amplitude = ingested.amplitude.as_ref().unwrap();
+        for (mask_row, amplitude_row) in ingested.mask.iter().zip(amplitude) {
+            for (&mask, &value) in mask_row.iter().zip(amplitude_row) {
+                if mask == 0.0 {
+                    assert_eq!(value, 0.0);
+                } else {
+                    assert_eq!(value, 1.0);
+                }
+            }
+        }
+    }
 }

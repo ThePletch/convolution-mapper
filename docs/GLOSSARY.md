@@ -4,6 +4,7 @@
 |---|---|
 | ADU | Analog-to-digital unit. Native detector image intensity. |
 | ANSI | American National Standards Institute. Pupil-phase modes use the ANSI Z80.28 two-index scheme \((n, m)\). |
+| DFT | Discrete Fourier Transform. The pupil-to-field step is rustfft's unnormalized forward DFT; overall scale is absorbed by unit-sum intensity. |
 | FFT | Fast Fourier Transform. |
 | FWHM | Full width at half maximum. |
 | LM | Levenberg–Marquardt nonlinear least squares. |
