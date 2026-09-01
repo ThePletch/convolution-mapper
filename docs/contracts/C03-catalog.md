@@ -204,17 +204,7 @@ At a star with field \((x,y)\) mm, trail length in mm is \(|\omega| \cdot T \cdo
 
 Then apply C3.6.3 with that length and angle. This kernel is **field-dependent**; stage 1 fits a local `(length_px, angle_rad)` pair; stage 2 fits the three globals (C6.4).
 
-### C3.6.5 `periodic_error`
-
-Parameters: `amp_px` ≥ 0, `period_s` > 0, `phase_rad`.
-
-Trajectory: \(x(t) = A \sin(2\pi t / P + \varphi)\), \(y=0\) in detector pixels along \(+x\) (mount RA; frozen axis). \(A=\texttt{amp\_px}\). \(K\) SHALL be the time-average of unit Gaussians of σ \(=0.5 r\) along that path over \([-T/2,T/2]\), non-negative, then unit-normalized. Implementations SHOULD approximate the average by 64 equal time steps.
-
-`period_s` is typically frozen from mount metadata. `phase_rad` is a nuisance (C8 reports large variance).
-
-v1 default catalog: this term exists but `frozen=true` and is **inactive** (`enabled=false`).
-
-### C3.6.6 Kernel `enabled` flag
+### C3.6.5 Kernel `enabled` flag
 
 Each kernel term has `enabled: bool`. Disabled kernels are omitted from the pipeline (not frozen-at-zero: omitted). Frozen-but-enabled kernels participate at their init/prior mean.
 
@@ -246,7 +236,6 @@ Each kernel term has `enabled: bool`. Disabled kernels are omitted from the pipe
 | `charge_diffusion` | kernel gaussian_iso | uniform | false | zero (numeric prior \(\mu=0.3\) ⇒ \(a_0=0.3\) px) | gaussian μ=0.3, σ=0.1 px |
 | `linear_drift` | kernel | uniform | **true**, enabled=false | — | — |
 | `field_rotation` | kernel | field law C3.6.4 | **true**, enabled=false | — | — |
-| `periodic_error` | kernel | uniform | **true**, enabled=false | — | — |
 
 `flux` and `sky` are not Zernikes; they are first-class `kind: "photometric"` in the schema (third kind). See C3.2 extension:
 

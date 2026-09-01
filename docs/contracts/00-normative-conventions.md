@@ -140,7 +140,6 @@ The unit disk is \(\rho \le 1\). The v1 circular mask is exactly that set (C9.4)
 ## NOR.11 Time origin
 
 - Exposure midpoint is the time origin for kernel trajectories unless `date_obs_mjd` is supplied, in which case kernel phase parameters are relative to that MJD converted to seconds in the Unix epoch only for serialization; internally, \(t=0\) is the exposure midpoint and \(t \in [-T/2, T/2]\) with \(T =\) `exptime_s`.
-- Periodic-error phase is a dimensionless angle at \(t=0\), not a wall-clock.
 
 ## NOR.12 Randomness
 

@@ -1,7 +1,7 @@
 //! PSF field modeler core.
 //!
-//! Numeric modules are placeholders until later PRs. Types, ingest, and
-//! errors land in PR-B.
+//! Types, ingest, errors, and the generic `(n, m)` Zernike engine live here.
+//! Other numeric modules are unimplemented until their contracts are built.
 
 pub mod catalog;
 pub mod diag;
@@ -20,7 +20,14 @@ pub mod theta;
 pub mod types;
 pub mod zernike;
 
+pub use catalog::{kernel_parameters, KernelParameter};
 pub use error::{ErrorCode, ErrorModule, PsfFieldError};
+pub use theta::{
+    assemble_layout, assemble_theta, defocus_moment_init, dtheta_du, evaluate_gaussian_prior,
+    initialize_theta, moffat_alpha_from_fwhm, prior_residual, schedule_steps, theta_from_unbounded,
+    DefocusMomentInputs, EvaluatedGaussianPrior, ScheduleStep, Stage1Options, ThetaAssembly,
+    ThetaLayout, MOFFAT_BETA,
+};
 
 #[cfg(feature = "python")]
 mod python_module;

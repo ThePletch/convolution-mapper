@@ -56,6 +56,10 @@ Avoid using analogy, metaphors, or terminology not established in general use in
 Do not use terminology invented during the planning of a feature, and do not include references to implementation plans (e.g. phases, PR numbers) in comments or names.
 
 ### Commenting
-Never leave comments unless details of an implementation would surprise a first-time user, or if a first-time user would not easily understand its purpose. Always attempt to explain a function's use and purpose in its name and signature, rather than with comments.
+Write for a reviewer who has learned the underlying optics and statistics but should not have to recall every formula from memory. Names and signatures should still make the call site clear; comments remind the reader what a quantity *is* and why a constant has its value.
 
-Comments should explain non-obvious motivations if code is structured unintuitively, e.g. for efficiency reasons or to work around an external bug. They should NOT explain why a prior implementation was corrected, or refer to any part of the code base that is not present in the current version. Justifications for changes or explanations of addressed bugs belong in PR descriptions, not in the code.
+- Use the full word in comments and in identifiers unless the short form is a conventional acronym (FFT, PSF, RMS) or a symbol from the governing equation (θ, ρ, Φ). Do not truncate words ("param", "init", "coeff", "idx") when the full word fits.
+- Document struct and enum fields whose purpose is not obvious from the name. For example `expected_fwhm_px` should say that it is the extraction-time seeing estimate used to initialize Moffat α, not a measurement taken from this stamp.
+- Explain scientific constants and variables in comments: what they represent, their units, and why a frozen numeric value is that number.
+- When a comment explains purpose, describe the concept in words. Contract requirement IDs (`C3.5.1`, `NOR.10`, and so on) are citations, not the explanation: write the physics or data rule first, then the ID in parentheses.
+- Comment non-obvious control flow (efficiency, an external bug, a catalog-versus-prose disagreement). Do not narrate what the next line does, why a prior implementation was wrong, or refer to code that is not in this version. Justifications for changes belong in PR descriptions.
