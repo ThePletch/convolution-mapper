@@ -247,7 +247,7 @@ class ExtractionConfig(BaseModel):
     min_separation_fwhm: FiniteFloat = 1.0
     snr_min: FiniteFloat = 20.0
     max_selected: JsonInt = 400
-    selection_mode: Literal["highest_snr", "snr_by_cell"] = "highest_snr"
+    selection_mode: Literal["highest_snr", "snr_by_cell"] = "snr_by_cell"
     holdout_fraction: FiniteFloat = 0.0
     holdout_seed: JsonInt | None = None
 

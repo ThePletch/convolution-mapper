@@ -11,7 +11,7 @@ Requirements use RFC 2119 **SHALL / SHALL NOT / SHOULD / MAY** as defined in `RE
 - The data-contract version is the string `schema_version` with SemVer `MAJOR.MINOR.PATCH`.
 - **Frozen for v1:** `"1.0.0"`.
 - A change to any field name, unit, array layout, missingness rule, or formula that would make an old file silently mis-parse SHALL bump MAJOR.
-- A strictly additive optional field with a stated default MAY bump MINOR. This revision adds optional fields (`selection_mode`, `ScoreOptions.max_stars`, `covariance_chi2_scaled`, `centroid_leak_suspect`, prior `mean: "init"`) with stated defaults; `schema_version` remains `"1.0.0"` so existing files remain valid. The shipped default catalog JSON is updated in place (Moffat prior `mean: "init"`).
+- The shipped default catalog JSON is updated in place (tilt enabled per-star, zero-mean phase priors, quadratic astigmatism, unfrozen sky and Moffat β, anisotropic Gaussian kernel). `schema_version` remains `"1.0.0"` so existing files remain valid. A strictly additive optional field with a stated default MAY bump MINOR.
 - Documentation-only clarification MAY bump PATCH.
 - Every serialized object (JSON, FITS header, Parquet metadata, PyO3 capsule) SHALL include `schema_version`. Readers SHALL reject unknown MAJOR.
 
@@ -74,7 +74,7 @@ where \(a_k\) is in waves RMS and \(Z_k\) is discrete-RMS-normalized (C2), so \(
 \alpha_{\mathrm{rad}} = \alpha_{\mathrm{arcsec}} \cdot \frac{\pi}{180 \times 3600}
 \]
 
-**FITS wavelength:** if a header supplies Ångström, convert \(\lambda_m = \lambda_Å \times 10^{-10}\). If it supplies nanometres, \(\lambda_m = \lambda_{nm} \times 10^{-9}\). The pydantic model stores only metres.
+**FITS wavelength:** if a header supplies Ångström, convert \(\lambda_m = \lambda_Å \times 10^{-10}\). If it supplies nanometres, \(\lambda_m = \lambda_{nm} \times 10^{-9}\). The pydantic model stores only metres. v1 is monochromatic: `wavelength_m` SHALL be the flux-weighted effective wavelength of the bandpass. A multi-sample incoherent sum over a filter is a reserved later slot, not a v1 requirement.
 
 ## NOR.7 Pixel coordinate system
 

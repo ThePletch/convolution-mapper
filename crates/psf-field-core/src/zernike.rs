@@ -427,28 +427,54 @@ mod tests {
     }
 
     fn max_azimuthal_relative_rms(intensity: &[Vec<f64>], c_star: f64) -> f64 {
-        // Annuli of 0.25 px exclude the Airy radial gradient; a Seidel-like m=1 leak
-        // would show up as azimuthal RMS inside each ring. (C2.8.2)
+        // 0.25 px hypot annuli mix axis (r) and diagonal (r√2) pixels, so RMS vs the
+        // annulus mean is the Airy radial slope. Compare each pixel to its 90° rotate
+        // instead: a circular pattern agrees; m=1 / fftshift leakage does not. (C2.8.2)
         const ANNULUS_WIDTH_PX: f64 = 0.25;
         let n = intensity.len();
+        let sample = |column: f64, row: f64| -> Option<f64> {
+            if column < -0.5 || row < -0.5 {
+                return None;
+            }
+            let i = column.round() as isize;
+            let j = row.round() as isize;
+            if i < 0 || j < 0 {
+                return None;
+            }
+            let (i, j) = (i as usize, j as usize);
+            if j < n && i < n {
+                Some(intensity[j][i])
+            } else {
+                None
+            }
+        };
         let mut max_rel = 0.0;
         let mut r = 0.5;
         while r < n as f64 {
             let r_hi = r + ANNULUS_WIDTH_PX;
-            let mut values = Vec::new();
+            let mut n_pix = 0_usize;
+            let mut mean = 0.0;
+            let mut diffs = Vec::new();
             for (j, row) in intensity.iter().enumerate() {
                 for (i, &v) in row.iter().enumerate() {
                     let rp = (i as f64 - c_star).hypot(j as f64 - c_star);
-                    if rp >= r && rp < r_hi {
-                        values.push(v);
+                    if rp < r || rp >= r_hi {
+                        continue;
+                    }
+                    n_pix += 1;
+                    mean += v;
+                    let di = i as f64 - c_star;
+                    let dj = j as f64 - c_star;
+                    // 90° rotation in (x, y) = (column, row): (di, dj) → (−dj, di).
+                    if let Some(rotated) = sample(c_star - dj, c_star + di) {
+                        diffs.push(v - rotated);
                     }
                 }
             }
-            if values.len() >= 8 {
-                let mean = values.iter().sum::<f64>() / values.len() as f64;
-                let var =
-                    values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
-                let rel = var.sqrt() / mean.max(1e-15);
+            if n_pix >= 8 && !diffs.is_empty() {
+                mean /= n_pix as f64;
+                let rms = (diffs.iter().map(|d| d * d).sum::<f64>() / diffs.len() as f64).sqrt();
+                let rel = rms / mean.max(1e-15);
                 if rel > max_rel {
                     max_rel = rel;
                 }
@@ -752,16 +778,21 @@ mod tests {
         assert!(n0 < 1e-8 * n_defocus);
     }
 
-    /// Orthonormal Zernike coma does not shift the first-moment centroid; Seidel ρ³ cosθ would. (C2.8.5)
+    /// Orthonormal Zernike coma has zero Z-tilt but nonzero G-tilt, so the first
+    /// moment follows ⟨∂Φ/∂ξ⟩ along the mode axis. The 5×10^{-3} px bound is the
+    /// cross-axis residual, where G-tilt is identically zero. (C2.8.5)
     #[test]
     #[ignore = "requires C9 PSF pipeline"]
-    fn c2_8_5_zernike_coma_centroid_preserving() {
+    fn c2_8_5_zernike_coma_g_tilt() {
         let c_star = (STAMP_SIZE as f64 - 1.0) / 2.0;
-        for _m in [1_i32, -1] {
+        for m in [1_i32, -1] {
             let intensity = temporary_stamp_stub();
             let (x_bar, y_bar) = first_moment(&intensity);
-            assert!((x_bar - c_star).abs() < 5e-3);
-            assert!((y_bar - c_star).abs() < 5e-3);
+            if m > 0 {
+                assert!((y_bar - c_star).abs() < 5e-3);
+            } else {
+                assert!((x_bar - c_star).abs() < 5e-3);
+            }
         }
     }
 

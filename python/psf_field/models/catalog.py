@@ -140,6 +140,14 @@ class GaussianIsoSpec(BaseModel):
     id: Literal["gaussian_iso"]
 
 
+class GaussianAnisoSpec(BaseModel):
+    """Anisotropic Gaussian kernel on the detector (tracking / wind elongation)."""
+
+    model_config = MODEL_CONFIG
+
+    id: Literal["gaussian_aniso"]
+
+
 class MoffatIsoSpec(BaseModel):
     """Isotropic Moffat kernel on the detector."""
 
@@ -164,7 +172,7 @@ class FieldRotationSpec(BaseModel):
     id: Literal["field_rotation"]
 
 
-KernelSpec = GaussianIsoSpec | MoffatIsoSpec | LinearDriftSpec | FieldRotationSpec
+KernelSpec = GaussianIsoSpec | GaussianAnisoSpec | MoffatIsoSpec | LinearDriftSpec | FieldRotationSpec
 
 
 def _prior_is_from_init(prior: PriorSpec) -> bool:
@@ -227,6 +235,16 @@ class GaussianIsoTerm(_CatalogTerm):
 
     kind: Literal["kernel"]
     kernel: GaussianIsoSpec
+    field_basis: FieldBasis | None = None
+    init: ZeroInit
+    prior: PriorNone | PriorGaussian
+
+
+class GaussianAnisoTerm(_CatalogTerm):
+    """Anisotropic Gaussian kernel (tracking / wind). Stage-1 fits (σ_a, σ_b, φ)."""
+
+    kind: Literal["kernel"]
+    kernel: GaussianAnisoSpec
     field_basis: FieldBasis | None = None
     init: ZeroInit
     prior: PriorNone | PriorGaussian
@@ -311,12 +329,15 @@ def _term_tag(value: Any) -> str:
     return str(kind)
 
 
-KernelTerm = GaussianIsoTerm | MoffatIsoTerm | LinearDriftTerm | FieldRotationTerm
+KernelTerm = (
+    GaussianIsoTerm | GaussianAnisoTerm | MoffatIsoTerm | LinearDriftTerm | FieldRotationTerm
+)
 PhotometricTerm = FluxTerm | SkyTerm
 
 ErrorTerm = Annotated[
     Annotated[PhaseTerm, Tag("phase")]
     | Annotated[GaussianIsoTerm, Tag("kernel:gaussian_iso")]
+    | Annotated[GaussianAnisoTerm, Tag("kernel:gaussian_aniso")]
     | Annotated[MoffatIsoTerm, Tag("kernel:moffat_iso")]
     | Annotated[LinearDriftTerm, Tag("kernel:linear_drift")]
     | Annotated[FieldRotationTerm, Tag("kernel:field_rotation")]

@@ -418,7 +418,7 @@ fn default_max_selected() -> i64 {
     400
 }
 fn default_selection_mode() -> String {
-    "highest_snr".to_string()
+    "snr_by_cell".to_string()
 }
 
 impl ExtractionConfig {

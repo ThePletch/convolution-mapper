@@ -28,8 +28,8 @@ A contract set is conceptually correct if all of the following hold. Check them 
 
 1. **Unit closure.** Every formula’s inputs and outputs have units declared in `00`. No implicit `2π` or pixel/arcsec conversion.
 2. **Composition closure.** Phase terms compose only by addition in the pupil; kernels compose only by convolution after the pupil-to-PSF map; sampling is last. No term writes a PSF-space additive residual.
-3. **Identifiability honesty.** Every documented degeneracy (defocus sign, blur stacking, tilt-vs-centroid) has a named mitigation that is either a frozen exclusion, a prior, a scope, or a reported covariance — never “the optimizer will figure it out.”
-4. **Two-stage information flow.** Stage 1 consumes `C1` records and emits per-star coefficient vectors + covariances. Stage 2 consumes only those vectors/covariances plus the catalog field bases. The evaluator uses only stage-2 maps + the forward pipeline. Nothing in stage 2 re-reads pixels.
+3. **Identifiability honesty.** Every documented degeneracy (even-mode twin-image, blur stacking, tilt-vs-coma) has a named mitigation that is either a frozen exclusion, a prior, a scope, a sign-relabelling step, or a reported covariance — never “the optimizer will figure it out.”
+4. **Two-stage information flow.** Stage 1 consumes `C1` records and emits per-star coefficient vectors + covariances. Stage 2 consumes those vectors/covariances plus the catalog field bases, then relabels even-mode signs and re-initializes stage 1 once from the maps. The evaluator uses only stage-2 maps + the forward pipeline (per-star tilt held at 0 so the returned PSF is centered). Nothing in stage 2 re-reads pixels.
 5. **Catalog-as-data.** Adding a named aberration never requires a new code path in the engine: it is a catalog row citing `(n,m)` or a kernel id plus a field basis.
 6. **Validation load-bearing.** Every frozen numerical choice that could hide a bug has a closed-form or corpus check with an inequality. Those checks are specified *before* the pipeline they validate.
 
@@ -55,7 +55,7 @@ A contract set is conceptually correct if all of the following hold. Check them 
 
 ## What v1 delivers
 
-Given a field position `(x, y)` in millimetres (NOR.C), the evaluator SHALL return a model PSF on a stated detector pixel grid, plus the local Zernike vector and kernel parameters that produced it. Instrument-characterization reports are a future *consumer* of C6 outputs, not a v1 deliverable.
+Given a field position `(x, y)` in millimetres (NOR.C), the evaluator SHALL return a model PSF on a stated detector pixel grid, plus the local Zernike vector and kernel parameters that produced it. That PSF is the v1 deliverable for a **downstream deconvolution** of an already-in-focus exposure. Instrument-characterization reports and optical-system calibration are future *consumers* of C6 outputs, not a v1 deliverable.
 
 ## Explicitly out of scope (v1)
 
@@ -63,7 +63,7 @@ These SHALL NOT be implemented. The contracts still reserve slots so they are no
 
 - Mechanical sensitivity matrices with real optical-design data; collimation bundles populated with design numbers.
 - Crowded-field deblending, PSF-fitting photometry, astrometric-frame catalogs.
-- Joint multi-exposure LM (the scoping mechanism in C4 exists; v1 executes one exposure at a time, with known defocus offsets applied as frozen additives).
+- Joint multi-exposure LM (the scoping mechanism in C4 exists; v1 executes one exposure at a time, with known defocus offsets applied as frozen additives). Deliberate extra-focal calibration frames are optional, not the recommended path.
 - Non-circular pupil *models* (the mask array exists from day one; v1’s shipped mask is circular unobstructed).
 - Chromatic / multi-wavelength coherent superposition (v1 is monochromatic at `wavelength_m`).
 - Hand-written LM, automatic differentiation, GPU kernels, Seidel (non-orthonormal) pupil bases in the engine.

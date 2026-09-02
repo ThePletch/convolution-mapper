@@ -132,16 +132,16 @@ Candidates with \(\mathrm{SNR} < 20\) SHALL NOT receive `SELECTED`. **Frozen SNR
 
 | Value | Default | Behavior |
 |---|---|---|
-| `highest_snr` | **yes** | C1A.11.1 |
-| `snr_by_cell` | no | C1A.11.2 |
+| `highest_snr` | no | C1A.11.1 |
+| `snr_by_cell` | **yes** | C1A.11.2 |
 
 **Frozen default `max_selected = 400`.** Allowed [50, 2000]. If the number of candidates with SNR ≥ 20 is \(\le\) `max_selected`, keep all of them (no brightness cap) under either mode.
 
-### C1A.11.1 `highest_snr` (default)
+### C1A.11.1 `highest_snr`
 
-If more than `max_selected` candidates survive the SNR floor, keep the `max_selected` with highest SNR. Highest-SNR-only MAY empty detector corners; that is why C1A.11.2 exists. C10 uses this mode (and \(n_{\mathrm{truth}} <\) `max_selected`), so corpus gates are unchanged.
+If more than `max_selected` candidates survive the SNR floor, keep the `max_selected` with highest SNR. Highest-SNR-only MAY empty detector corners. C10 uses `snr_by_cell` (and \(n_{\mathrm{truth}} <\) `max_selected`), so corpus gates are unchanged under either mode.
 
-### C1A.11.2 `snr_by_cell`
+### C1A.11.2 `snr_by_cell` (default)
 
 Same candidates and SNR floor. Partition the detector with the same 3×3 field-mm bins as C1A.12. Let \(q = \lfloor \texttt{max\_selected}/9 \rfloor\). In each cell, take the \(q\) highest-SNR candidates (or all if fewer). Fill leftover slots from remaining candidates by global SNR. If `max_selected` is not a multiple of 9, the remainder after the nine quotas also goes to global SNR.
 

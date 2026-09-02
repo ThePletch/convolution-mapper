@@ -42,6 +42,7 @@ pub enum MoffatInit {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelKind {
     GaussianIso,
+    GaussianAniso,
     MoffatIso { init: MoffatInit },
     LinearDrift,
     FieldRotation,
@@ -52,6 +53,7 @@ impl KernelKind {
     pub const fn id_str(self) -> &'static str {
         match self {
             Self::GaussianIso => "gaussian_iso",
+            Self::GaussianAniso => "gaussian_aniso",
             Self::MoffatIso { .. } => "moffat_iso",
             Self::LinearDrift => "linear_drift",
             Self::FieldRotation => "field_rotation",
@@ -426,6 +428,7 @@ impl ErrorTerm {
             | Self::Kernel {
                 kernel:
                     KernelKind::GaussianIso
+                    | KernelKind::GaussianAniso
                     | KernelKind::LinearDrift
                     | KernelKind::FieldRotation
                     | KernelKind::MoffatIso {
@@ -540,6 +543,7 @@ mod wire {
     #[serde(rename_all = "snake_case")]
     pub enum KernelId {
         GaussianIso,
+        GaussianAniso,
         MoffatIso,
         LinearDrift,
         FieldRotation,
@@ -679,6 +683,7 @@ mod wire {
                 } => {
                     let kernel = match (kernel.id, init.method) {
                         (KernelId::GaussianIso, InitMethod::Zero) => KernelKind::GaussianIso,
+                        (KernelId::GaussianAniso, InitMethod::Zero) => KernelKind::GaussianAniso,
                         (KernelId::MoffatIso, InitMethod::Zero) => KernelKind::MoffatIso {
                             init: MoffatInit::Zero,
                         },
@@ -701,6 +706,7 @@ mod wire {
                             KernelKind::MoffatIso {
                                 init: MoffatInit::Zero
                             } | KernelKind::GaussianIso
+                                | KernelKind::GaussianAniso
                                 | KernelKind::LinearDrift
                                 | KernelKind::FieldRotation
                         ),
@@ -837,6 +843,7 @@ mod wire {
                 } => {
                     let (id, method) = match kernel {
                         KernelKind::GaussianIso => (KernelId::GaussianIso, InitMethod::Zero),
+                        KernelKind::GaussianAniso => (KernelId::GaussianAniso, InitMethod::Zero),
                         KernelKind::MoffatIso {
                             init: MoffatInit::Zero,
                         } => (KernelId::MoffatIso, InitMethod::Zero),

@@ -52,12 +52,11 @@ Prior row for parameter \(j\): \(J_{\mathrm{prior}, j} = 1/\sigma_{\mathrm{prior
 
 Apply C3.5 per term. Then apply C4.4 schedule. \(\theta_0\) after inits, before step 1, SHALL be written to `Stage1Result.theta_init`.
 
-Defocus sign: positive (C3.5.1). `Stage1Result.defocus_sign_ambiguous = true` always for single-exposure v1 when `|known_defocus_waves| < 0.05`. If `|known_defocus_waves| ≥ 0.05`, set `false`.
+Even-mode twin-image: for a centrosymmetric pupil, \(I(\Phi)=I(-\Phi(-\mathbf{x}))\), which maps \(a_n^m \mapsto (-1)^{n+1} a_n^m\) (even \(n\) negated, odd \(n\) unchanged). Photometric and kernel parameters are unchanged. `Stage1Result.defocus_sign_ambiguous = true` when `|known_defocus_waves| < 0.05`; the flag names the whole even-mode gauge, not only defocus. If `|known_defocus_waves| ≥ 0.05`, set `false`. Stage 2 relabels the gauge (C6.8). Init of \(a_{2,0}\) is the positive extra-width estimate (C3.5.1).
 
 ## C5.4 What is not fitted
 
-- Stamp centroid (C1.2.3 is an input).
-- Tilt modes when disabled (C3.7).
+- Stamp centroid (C1.2.3 is an input; \(Z_1^{\pm 1}\) absorb residual G-tilt and extraction error).
 - `known_defocus_waves`.
 
 ## C5.5 LM hyperparameters (frozen)

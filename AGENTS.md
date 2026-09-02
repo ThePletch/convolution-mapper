@@ -1,8 +1,10 @@
 # Agent guidance
 
-This repository implements a field modeling algorithm based on star point-spread functions (PSFs) in astronomical images. It exposes a Python layer for star detection/extraction and user-facing diagnostics, which delegates to a Rust core for the main algorithm to dial in the parameters of its aberration model.
+This repository implements a field-varying point-spread function (PSF) model from stars in astronomical images. The v1 deliverable is a PSF evaluated at an arbitrary field position, intended as the kernel for a **downstream deconvolution** of an already-in-focus exposure — not as a collimation or optical-design calibration product.
 
-The implementation contracts in `docs/contracts/` are authoritative for the algorithm's implementation. ALWAYS review them when implementing new features to ensure that your code is compliant.
+It exposes a Python layer for star detection/extraction and user-facing diagnostics, which delegates to a Rust core for the aberration model (Zernike pupil phase, convolution kernels, and field polynomials).
+
+The implementation contracts in `docs/contracts/` are authoritative for the algorithm's implementation. ALWAYS review them when implementing new features to ensure that your code is compliant. When a test inequality and a contract disagree, that is a defect in the contracts or the tests; do not silently reinterpret a closed-form check to make CI green.
 
 ## Repository layout
 
