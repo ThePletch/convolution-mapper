@@ -8,11 +8,11 @@ Stage 2 does **not** read pixels. It fits field maps to the cloud of stage-1 loc
 - Catalog field bases (C3.3).
 - Stars’ `field_xy_mm` → \((u,v)\) via NOR.9.
 
-Stars with `covariance_ok=false` SHALL be excluded from stage 2 (listed in `dropped_star_ids`).
+Stars with `converged=false` SHALL be excluded from stage 2 (listed in `dropped_star_ids`). Stars with `covariance_ok=false` SHALL still be included: C6.2 already drops a star from a given term when that term's \(\sigma_s^{2}\) is non-finite. Zero-mean phase priors (C3.7) are the intended reason `covariance_ok` stays true in focus.
 
 ## C6.2 Per-coefficient linear problem (phase terms)
 
-For each enabled phase `term_id` with field basis monomials \(B_j(u,v)=u^{i}v^{j}\), \(j=1\ldots q\):
+For each enabled phase `term_id` with `scope` other than `per_star` and with field basis monomials \(B_j(u,v)=u^{i}v^{j}\), \(j=1\ldots q\):
 
 Let \(a_s\) be the local coefficient of star \(s\), \(\sigma_s^{2} = C_{kk}\) the corresponding diagonal of that star’s free-parameter covariance (C5.6). If that term was frozen in stage 1, skip the term in stage 2.
 
@@ -44,7 +44,7 @@ v1 SHALL still emit the evaluator using the SVD-truncated \(c\) (truncated modes
 
 ## C6.4 Kernel field parameters
 
-**Uniform kernels** (`moffat_seeing`, `gaussian_jitter`, `charge_diffusion`, `linear_drift` if enabled): stage 2 takes the **inverse-variance weighted mean** of the per-star values. No spatial polynomial. Report the weighted RMS about that mean as `scatter`.
+**Uniform kernels** (`moffat_seeing`, `gaussian_aniso`, `gaussian_jitter`, `charge_diffusion`, `linear_drift` if enabled): stage 2 takes the **inverse-variance weighted mean** of the per-star values (each kernel coefficient separately). No spatial polynomial. Report the weighted RMS about that mean as `scatter`.
 
 **`field_rotation`:** fit `(center_x_mm, center_y_mm, omega)` to per-star trail vectors \((L_s, \phi_s)\) from stage 1’s local `linear_drift`-equivalent parameters.
 
@@ -68,8 +68,29 @@ If `bundle.matrix` is null (v1), skip. Non-null is rejected in v1 (C3.7.1).
 
 `residuals` in each map: \(a_s - \hat a(u_s,v_s)\), same order as `star_ids_used`.
 
+## C6.8 Even-mode gauge (twin-image relabelling)
+
+For a centrosymmetric pupil the PSF is invariant under \(a_n^m \mapsto (-1)^{n+1} a_n^m\) (C5.3). Different stars MAY land in opposite basins. Before the linear maps of C6.2:
+
+1. Among converged stars that will enter stage 2, pick the **gauge star** with largest \(|a_{2,0}|\). If every such \(|a_{2,0}|\) is \(< 10^{-3}\) waves, skip relabelling (all even modes are consistent with 0).
+2. For every other star, form the twin vector that negates every even-\(n\) enabled phase coefficient (odd-\(n\), photometric, and kernel slots unchanged). Keep the labelling whose even-\(n\) coefficient vector has the smaller Euclidean distance to the gauge star's even-\(n\) vector.
+3. Write the chosen labelling back into that star's `Stage1Result.theta` (physical units). Covariance is unchanged (the twin is an exact isometry of the PSF residual).
+
+This step SHALL run even when `defocus_sign_ambiguous=false`.
+
+## C6.9 Map-initialized refit
+
+After C6.2–C6.4 maps exist from the relabelled coefficients:
+
+1. For each stage-2 star, replace every **field-mapped** phase coefficient with \(a(u,v)=\sum c_{ij} u^i v^j\) from those maps. Leave `per_star` phase (tilt), photometric, and kernel slots at their stage-1 values.
+2. Run one additional stage-1 LM on that star with `use_schedule=false` (all catalog-unfrozen slots free), starting from this \(\theta\).
+3. Recompute C6.2–C6.4 maps once from the refit coefficients. Do **not** iterate further.
+
+The recorded `Stage1Result.theta` / covariance and `Stage2Result.maps` SHALL be these post-refit quantities. Frozen: exactly one refit pass and one map update.
+
 ## C6.7 What stage 2 SHALL NOT do
 
-- Re-run FFTs or LM on pixels.
+- Re-run FFTs or LM on pixels except the single map-initialized refit in C6.9.
 - Fit a joint nonlinear field model for phase terms (linear only).
 - Use unweighted OLS (weights are mandatory).
+- Field-map `scope: per_star` terms.

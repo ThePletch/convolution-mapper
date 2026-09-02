@@ -10,15 +10,15 @@ Stage 1’s \(\theta\) is **per star** and contains:
 - photometric
 - local kernel parameters (for kernels with `field_basis` uniform or for the local trail of `field_rotation` / `linear_drift`)
 
-**Frozen default length** for `psf_field_v1_default` with default enable flags: phase unfrozen modes (11: defocus, 2 astig, 2 coma, 2 trefoil, spherical, 2 sec-astig) + flux + moffat α + jitter σ + diffusion σ = 15 free parameters if sky frozen and piston/tilt disabled. (Beta frozen, not counted.)
+**Frozen default length** for `psf_field_v1_default` with default enable flags: 12 unfrozen phase slots (2 tilt + defocus + 2 astig + 2 coma + 2 trefoil + spherical + 2 sec-astig) + flux + sky + moffat α + moffat β + anisotropic \((\sigma_a,\sigma_b,\phi)\) + jitter σ + diffusion σ = **21** free parameters (piston frozen). (Linear drift and field rotation disabled, not counted.)
 
-The implementation SHALL **not** hard-code 15; it SHALL count from the catalog. The number 15 is a conformance check for the default catalog.
+The implementation SHALL **not** hard-code 21; it SHALL count from the catalog. The number 21 is a conformance check for the default catalog.
 
 ## C4.2 Scope meanings
 
 | Scope | Shared among | v1 fitting |
 |---|---|---|
-| `per_star` | one `star_id` | stage 1 free (unless frozen) |
+| `per_star` | one `star_id` | stage 1 free (unless frozen). **Not** field-mapped in stage 2. v1 uses this for tilt, flux, and sky. |
 | `per_exposure` | all stars with the same `exposure_id` | stage 1 still fits **local** copies; stage 2 (or a post-average) combines them. v1 does **not** run a joint multi-star LM. |
 | `per_session` | all stars in `session_id` | same: local in stage 1, field map in stage 2 |
 
@@ -27,7 +27,7 @@ v1 SHALL NOT implement joint LM across stars. Scoping determines **stage-2 group
 ## C4.3 Photometric parameters
 
 - `flux`: `per_star`, always enabled, never field-mapped. Evaluated PSF (C7) is unit flux unless the caller passes a flux.
-- `sky`: `per_star`, frozen 0 by default.
+- `sky`: `per_star`, enabled, unfrozen, zero-mean Gaussian prior σ=5 ADU (C3.7). Residual sky after C1A subtraction; deconvolution is sensitive to wing bias.
 
 ## C4.4 Freeze / unfreeze
 
@@ -36,12 +36,12 @@ v1 SHALL NOT implement joint LM across stars. Scoping determines **stage-2 group
 `fit_schedule` (catalog) is a list of steps:
 
 ```
-{ "name": "coarse", "unfrozen_term_ids": ["flux", "zernike_2_0", "zernike_2_2", "zernike_2_m2", "moffat_seeing"] }
+{ "name": "coarse", "unfrozen_term_ids": ["flux", "sky", "zernike_1_1", "zernike_1_m1", "zernike_2_0", "zernike_2_2", "zernike_2_m2", "moffat_seeing", "gaussian_aniso"] }
 ```
 
 v1 default schedule (frozen):
 
-1. `coarse`: `flux`, `zernike_2_0`, `zernike_2_2`, `zernike_2_m2`, `moffat_seeing`
+1. `coarse`: `flux`, `sky`, `zernike_1_1`, `zernike_1_m1`, `zernike_2_0`, `zernike_2_2`, `zernike_2_m2`, `moffat_seeing`, `gaussian_aniso`
 2. `mid`: add `zernike_3_1`, `zernike_3_m1`, `zernike_3_3`, `zernike_3_m3`, `gaussian_jitter`
 3. `full`: add `zernike_4_0`, `zernike_4_2`, `zernike_4_m2`, `charge_diffusion`
 
@@ -69,7 +69,7 @@ If `bounds` is non-null, LM parameters SHALL be reparameterized as
 
 and the Jacobian SHALL include \(\partial\theta/\partial u = (\mathrm{hi}-\mathrm{lo})\,\sigma(1-\sigma)\). If a bound is hit within \(10^{-12}\) of either end after mapping back, C5 sets `flag_at_bound` for that parameter.
 
-Kernel `sigma_px`, `alpha_px`, `length_px` SHALL have `lo=0`, `hi=20` (pixels) in the default catalog. Phase coefficients: `lo=-5`, `hi=5` waves. Flux: `lo=0`, `hi=1e12`.
+Kernel `sigma_px`, `sigma_a_px`, `sigma_b_px`, `alpha_px`, `length_px` SHALL have `lo=0`, `hi=20` (pixels) in the default catalog. Moffat β: `lo=1.1`, `hi=8`. Kernel `angle_rad`: `lo=-\pi`, `hi=\pi`. Phase coefficients: `lo=-5`, `hi=5` waves. Flux: `lo=0`, `hi=1e12`. Sky: `lo=-1000`, `hi=1000` ADU.
 
 ## C4.7 Annotation sidecar
 

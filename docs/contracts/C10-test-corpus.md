@@ -54,12 +54,12 @@ Each scenario has `scenario_id`, `seed`, true maps, `n_stars`, true kernel globa
 ### C10.3.3 `single_defocus_neg`
 
 - \(a_{2,0}=-0.35\). Same else, `seed=3`.
-- Recovery: `| |â| - 0.35 |` within tolerance **and** `defocus_sign_ambiguous=true`. The algebraic sign MAY be wrong; the corpus scorer SHALL pass if `|â + 0.35| < tol` **or** `|â - 0.35| < tol`. This is the only scenario with an absolute-value clause.
+- Recovery: `| |â| - 0.35 |` within tolerance **and** `defocus_sign_ambiguous=true`. The algebraic sign MAY be wrong before C6.8; after C6.8 the corpus scorer SHALL use the relabelled \(\hat a\). The coefficient gate for this scenario still accepts either sign (C10.5). This is the only scenario with an absolute-value coefficient clause; PSF/OTF gates (C10.5) do not care about the gauge.
 
 ### C10.3.4 `single_coma_linear`
 
 - \(a_{3,1}(u,v) = 0.15 + 0.25 u\), \(a_{3,-1}=0\), others 0, `seed=4`, 100 stars.
-- Tests centroid-preserving coma + stage-2 linear map.
+- Tests G-tilt of Zernike coma + stage-2 linear map. Tilt is a per-star nuisance (C3.7).
 
 ### C10.3.5 `defocus_plane` (sensor tilt)
 
@@ -80,42 +80,66 @@ Each scenario has `scenario_id`, `seed`, true maps, `n_stars`, true kernel globa
 - Same truth as `unaberrated` but sky=800 ADU, 40 stars, `seed=7`.
 - Gates C1A coverage, not coefficient recovery (coefficients ~0).
 
+### C10.3.8 `seeing_aniso` (in-focus deconvolution)
+
+- All phase \(a_k=0\) except field astigmatism \(a_{2,2}=0.10(u^{2}-v^{2})\), \(a_{2,-2}=0.10\cdot 2uv\).
+- Moffat α=2.8 px, β=2.5 (FWHM ≈ 3.3" on the C10.1 camera).
+- `gaussian_aniso` truth: \(\sigma_a=0.8\) px, \(\sigma_b=0.3\) px, \(\phi=0.4\) rad; jitter 0.1 px; diffusion 0.3 px.
+- 100 stars, `seed=8`.
+- Purpose: PSF/OTF fidelity under realistic seeing and uniform elongation, including corners.
+
 ## C10.4 Ground-truth records
 
 For each star, a JSON row: `star_id`, `true_xy_px`, `true_field_xy_mm`, `true_theta` (dict of term_id → value), `true_flux_adu`.
 
 File: `corpus/<scenario_id>/truth.parquet` + `image.fits` + `manifest.json`.
 
-## C10.5 Scoring inequalities (fitter)
+## C10.5 Scoring inequalities
 
-After C1A + C5 + C6, using **matched** `star_id` via nearest extracted centroid within 0.5 px of truth; unmatched truth stars are ignored (up to 10% unmatched allowed except `extraction_stress`).
+After C1A + C5 + C6 (including C6.8–C6.9), using **matched** `star_id` via nearest extracted centroid within 0.5 px of truth; unmatched truth stars are ignored (up to 10% unmatched allowed except `extraction_stress`).
 
-Let \(\hat a_s\) be stage-1 local coefficient, \(a_s^\star\) truth.
+The **primary** gate for every scenario except `extraction_stress` is PSF / OTF fidelity at field points (C10.5.1). Per-star coefficient errors (C10.5.2) are diagnostics: a star may sit in the even-mode twin-image of truth and still produce the correct PSF.
+
+### C10.5.1 Evaluator PSF and OTF (primary)
+
+At 9 field points (3×3 grid on the detector including axis) **and**, for `seeing_aniso`, `single_coma_linear`, `defocus_plane`, and `combo_low_order`, at the four detector corners:
+
+Let \(P\) be the C7 PSF and \(P^\star\) the C9 forward model of the scenario's true local \(\theta\) (tilt of \(P^\star\) zeroed so both PSFs are centered), each normalized to sum 1.
+
+- \(\max|P - P^\star| / \max(P^\star) \le 0.05\).
+- Let \(\widehat{P}\) be the unnormalized DFT of the stamp (same size). Up to detector Nyquist (spatial frequencies with \(\sqrt{k_x^{2}+k_y^{2}} \le S/2\)), \(\mathrm{median}\,|\widehat{P}-\widehat{P}^\star| / \max(|\widehat{P}^\star|, 10^{-12}) \le 0.08\).
+
+`unaberrated` and `extraction_stress` are exempt from the OTF median (SNR / coverage only).
+
+### C10.5.2 Coefficients (diagnostic)
+
+Let \(\hat a_s\) be stage-1 local coefficient **after C6.8 relabelling**, \(a_s^\star\) truth.
 
 **Per-star, median over matched stars:**
 
 | Scenario | Quantity | Median \(\lvert\hat a - a^\star\rvert\) SHALL be ≤ |
 |---|---|---|
-| `unaberrated` | every phase \(a_k\) | 0.04 waves |
+| `unaberrated` | every field-mapped phase \(a_k\) | 0.04 waves |
 | `single_defocus_const` | \(a_{2,0}\) | 0.05 waves |
 | `single_defocus_neg` | \(\min(\lvert\hat a-(-0.35)\rvert,\lvert\hat a-0.35\rvert)\) | 0.05 waves |
 | `single_coma_linear` | \(a_{3,1}\) | 0.05 waves |
 | `defocus_plane` | \(a_{2,0}\) | 0.06 waves |
-| `combo_low_order` | each enabled phase term | 0.08 waves |
+| `combo_low_order` | each enabled field-mapped phase term | 0.08 waves |
+| `seeing_aniso` | \(a_{2,2}\), \(a_{2,-2}\) | 0.08 waves |
 
 **Stage-2:** \(\lvert \hat c_{ij} - c_{ij}^\star \rvert \le 0.05\) for `single_coma_linear` \(c_{00}, c_{10}\); \(\le 0.06\) for `defocus_plane` \(c_{00}, c_{10}\); \(\lvert \hat c_{01}\rvert \le 0.04\) for `defocus_plane`.
 
-**Evaluator (C10.7):** at 9 field points (3×3 grid on the detector including axis), \(\max|\mathrm{PSF}_{\mathrm{eval}} - \mathrm{PSF}_{\mathrm{truth\ forward}}| / \max(\mathrm{PSF}_{\mathrm{truth}}) \le 0.05\) for `single_coma_linear` and `defocus_plane` after flux normalization of both to sum 1.
+A noiseless C10.1 unaberrated stamp at integer center, kernels omitted, SHALL satisfy \(\sum m \in [0.94, 1.02]\) before flux scaling (Airy energy outside \(S=31\)).
 
 ## C10.6 Extraction gates (not fitter)
 
 - `n_selected ≥ 0.5 * n_truth` for all scenarios except `extraction_stress` (≥ 0.4).
-- C1A.12 `empty_cells ≤ 3`, `design_cond_plane ≤ 1e6`. Corpus extraction uses `selection_mode=highest_snr` (L18).
+- C1A.12 `empty_cells ≤ 3`, `design_cond_plane ≤ 1e6`. Corpus extraction uses `selection_mode=snr_by_cell` (L18).
 - Median centroid error \(\lvert \hat x - x^\star \rvert \le 0.15\) px for `unaberrated`.
 
 ## C10.7 Evaluator self-consistency
 
-C7.4 provenance inequality \(10^{-12}\) on a zero-kernel, integer-centered, in-field point.
+C7.4 provenance inequality \(10^{-12}\) on a zero-kernel, integer-centered, in-field point. C10.5.1 is the session-level PSF/OTF gate and uses a looser tolerance.
 
 ### C10.7.1 Digest fixture
 
@@ -134,3 +158,7 @@ A noiseless stamp generated with the C10.1 camera, `known_defocus_waves=0.3`, tr
 - Use Tiny Tim, Zemax, or any external PSF renderer as truth.
 - Place stars within 40 px of the edge.
 - Enable `field_rotation` in v1 scoring (that module has unit tests on \(K\) only, C3.6, not end-to-end recovery in v1).
+
+## C10.11 Independent Airy check (model-form, not a fitter gate)
+
+A noiseless analytic Airy pattern (Born & Wolf circular-aperture intensity, same \(\lambda, D\), plate scale, and \(S\) as C10.1), integrated over each detector pixel by the same 4×4 Gauss–Legendre rule as C9.10.2, SHALL be compared to `forward_psf` at zero aberration, no kernels. Peak-relative \(\max|I_{\mathrm{Airy}}-I_{\mathrm{fwd}}|/\max I_{\mathrm{Airy}}\) is **reported**. It is not a C10.5 inequality: bilinear sampling of a 2×-oversampled FFT intensity is a known low-pass, and the fitter corpus cannot see it when truth and model share C9.

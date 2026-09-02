@@ -11,8 +11,8 @@ use crate::types::{
     PhaseInit, PriorSpec, Scope, StarRecord,
 };
 
-/// Moffat profile exponent β, frozen at 2.5 in v1 for the atmospheric seeing kernel.
-/// (C3.6.2)
+/// Moffat profile exponent β used as the initialization (and prior mean) for seeing.
+/// The v1 default catalog leaves β free with a Gaussian prior about this value. (C3.6.2)
 pub const MOFFAT_BETA: f64 = 2.5;
 
 /// Floor on a Gaussian prior's σ when the mean is taken from initialization:
@@ -33,6 +33,19 @@ const DEFOCUS_A_ABS_MAX: f64 = 2.0;
 /// Floor on the zero-aberration model second moment so the defocus ratio cannot
 /// divide by zero, in pixels². (C3.5.1)
 const SIGMA0_SQ_FLOOR: f64 = 1e-12;
+
+/// Inclusive `[lo, hi]` for Moffat β. β > 1 keeps the profile integrable. (C4.6)
+const MOFFAT_BETA_BOUNDS: [f64; 2] = [1.1, 8.0];
+
+/// Inclusive `[lo, hi]` for kernel orientation, in radians. (C4.6)
+const KERNEL_ANGLE_BOUNDS: [f64; 2] = [-std::f64::consts::PI, std::f64::consts::PI];
+
+/// Gaussian prior on unfrozen Moffat β, in the same units as the coefficient (dimensionless).
+/// Mean is the initialization 2.5. (C3.6.2, C3.7)
+const MOFFAT_BETA_PRIOR_SIGMA: f64 = 1.0;
+
+/// Gaussian prior σ on the anisotropic-kernel orientation, in radians (π/4). (C3.6.6)
+const ANISO_ANGLE_PRIOR_SIGMA: f64 = std::f64::consts::FRAC_PI_4;
 
 fn input(message: impl Into<String>) -> PsfFieldError {
     PsfFieldError::input(ErrorModule::Boundary, message)
@@ -93,7 +106,7 @@ pub struct EvaluatedGaussianPrior {
 /// Layout of enabled catalog terms: metadata sidecar, bounds, and which θ slots are free.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThetaLayout {
-    /// One entry per θ slot, including frozen-but-enabled coefficients (piston, sky, Moffat β).
+    /// One entry per θ slot, including frozen-but-enabled coefficients (piston).
     pub param_meta: Vec<ParamMeta>,
     /// Inclusive `[lo, hi]` box for each slot, or `None` if unbounded. Used later to map
     /// an unconstrained Levenberg–Marquardt variable `u` onto physical θ. (C4.6)
@@ -201,18 +214,30 @@ fn slots_for_catalog(catalog: &Catalog) -> Vec<Slot> {
                         scope: term.scope(),
                         frozen: term.frozen() || param.always_frozen,
                         unit: param.unit.to_string(),
-                        // Catalog bounds apply to the kernel's primary coefficient (first slot).
-                        bounds: if coefficient_index == 0 {
-                            term.bounds()
-                        } else {
-                            None
-                        },
+                        bounds: kernel_slot_bounds(param.role, coefficient_index, term.bounds()),
                     });
                 }
             }
         }
     }
     slots
+}
+
+/// Bounds for one kernel coefficient. Catalog `bounds` apply to the primary width
+/// (`sigma_px`, `sigma_a_px`, `alpha_px`, `length_px`). Secondary widths reuse that
+/// box; β and orientation have frozen boxes of their own. (C4.6)
+fn kernel_slot_bounds(
+    role: &str,
+    coefficient_index: usize,
+    term_bounds: Option<[f64; 2]>,
+) -> Option<[f64; 2]> {
+    match role {
+        "beta" => Some(MOFFAT_BETA_BOUNDS),
+        "angle_rad" => Some(KERNEL_ANGLE_BOUNDS),
+        "sigma_b_px" => term_bounds.or(Some([0.0, 20.0])),
+        _ if coefficient_index == 0 => term_bounds,
+        _ => None,
+    }
 }
 
 /// Assemble parameter metadata and the free-index list from enabled catalog terms.
@@ -294,10 +319,26 @@ pub fn initialize_theta(
         for k in 0..n_slots {
             let meta = &layout.param_meta[slot_index];
             let value = init_slot_value(term, &meta.role, k, options, star, defocus)?;
-            let prior = if k == 0 {
-                evaluate_gaussian_prior(term.prior(), value)?
-            } else {
-                None
+            let prior = match meta.role.as_str() {
+                "beta" => evaluate_gaussian_prior(
+                    &PriorSpec::Gaussian {
+                        mean: MOFFAT_BETA,
+                        sigma: MOFFAT_BETA_PRIOR_SIGMA,
+                        stage2: None,
+                    },
+                    value,
+                )?,
+                "sigma_b_px" => evaluate_gaussian_prior(term.prior(), value)?,
+                "angle_rad" => evaluate_gaussian_prior(
+                    &PriorSpec::Gaussian {
+                        mean: 0.0,
+                        sigma: ANISO_ANGLE_PRIOR_SIGMA,
+                        stage2: None,
+                    },
+                    value,
+                )?,
+                _ if k == 0 => evaluate_gaussian_prior(term.prior(), value)?,
+                _ => None,
             };
             theta.push(value);
             priors.push(prior);
@@ -313,8 +354,10 @@ pub fn initialize_theta(
     Ok((theta, priors))
 }
 
-/// Initialization value for one θ slot. Moffat β is always 2.5; other secondary
-/// kernel coefficients start at 0. Primary slots follow the term's initialization method.
+/// Initialization value for one θ slot. Moffat β starts at 2.5. The anisotropic
+/// kernel copies its primary width onto σ_b so the first iterate is isotropic;
+/// other secondary kernel coefficients start at 0. Primary slots follow the term's
+/// initialization method.
 fn init_slot_value(
     term: &ErrorTerm,
     role: &str,
@@ -325,6 +368,9 @@ fn init_slot_value(
 ) -> Result<f64, PsfFieldError> {
     if role == "beta" {
         return Ok(MOFFAT_BETA);
+    }
+    if role == "sigma_b_px" {
+        return init_slot_value(term, "sigma_a_px", 0, options, star, defocus);
     }
     if slot_in_term > 0 {
         return Ok(0.0);
@@ -408,9 +454,9 @@ pub fn defocus_moment_init(
     Ok((d - known_defocus_waves).clamp(-DEFOCUS_A_ABS_MAX, DEFOCUS_A_ABS_MAX))
 }
 
-/// Moffat scale α from an expected FWHM, with frozen β = 2.5.
+/// Moffat scale α from an expected FWHM, using β = 2.5 at initialization.
 /// The Moffat half-width at half-maximum is α √(2^{1/β} − 1), so
-/// α = FWHM / (2 √(2^{1/β} − 1)). (C3.5.2)
+/// α = FWHM / (2 √(2^{1/β} − 1)). Fitted β may later leave 2.5. (C3.5.2)
 pub fn moffat_alpha_from_fwhm(expected_fwhm_px: f64) -> Result<f64, PsfFieldError> {
     check_positive("expected_fwhm_px", expected_fwhm_px)?;
     let half_width_factor = (2.0_f64.powf(1.0 / MOFFAT_BETA) - 1.0).sqrt();
@@ -601,6 +647,8 @@ mod tests {
         assert_eq!(
             free,
             vec![
+                ("zernike_1_1", "local_value"),
+                ("zernike_1_m1", "local_value"),
                 ("zernike_2_0", "local_value"),
                 ("zernike_2_2", "local_value"),
                 ("zernike_2_m2", "local_value"),
@@ -612,7 +660,12 @@ mod tests {
                 ("zernike_4_2", "local_value"),
                 ("zernike_4_m2", "local_value"),
                 ("flux", "flux"),
+                ("sky", "sky"),
                 ("moffat_seeing", "alpha_px"),
+                ("moffat_seeing", "beta"),
+                ("gaussian_aniso", "sigma_a_px"),
+                ("gaussian_aniso", "sigma_b_px"),
+                ("gaussian_aniso", "angle_rad"),
                 ("gaussian_jitter", "sigma_px"),
                 ("charge_diffusion", "sigma_px"),
             ]
@@ -630,12 +683,7 @@ mod tests {
             .iter()
             .map(|m| m.term_id.as_str())
             .collect();
-        for disabled in [
-            "zernike_1_1",
-            "zernike_1_m1",
-            "linear_drift",
-            "field_rotation",
-        ] {
+        for disabled in ["linear_drift", "field_rotation"] {
             assert!(!ids.contains(disabled), "{disabled} should be omitted");
         }
 
@@ -647,12 +695,20 @@ mod tests {
         assert!(piston.frozen);
         assert_eq!(piston.role, "local_value");
 
+        let tilt = layout
+            .param_meta
+            .iter()
+            .find(|m| m.term_id == "zernike_1_1")
+            .unwrap();
+        assert!(!tilt.frozen);
+        assert_eq!(tilt.scope, crate::types::Scope::PerStar);
+
         let sky = layout
             .param_meta
             .iter()
             .find(|m| m.term_id == "sky")
             .unwrap();
-        assert!(sky.frozen);
+        assert!(!sky.frozen);
         assert_eq!(sky.role, "sky");
 
         let beta = layout
@@ -660,7 +716,7 @@ mod tests {
             .iter()
             .find(|m| m.term_id == "moffat_seeing" && m.role == "beta")
             .unwrap();
-        assert!(beta.frozen);
+        assert!(!beta.frozen);
 
         let alpha = layout
             .param_meta
@@ -674,14 +730,14 @@ mod tests {
     fn freeze_mask_length_must_equal_n_free() {
         let catalog = ingested_default_catalog();
         let n_free = assemble_layout(&catalog, &options()).unwrap().n_free();
-        assert_eq!(n_free, 14);
+        assert_eq!(n_free, 21);
 
         let mut ok = options();
         ok.freeze_mask = Some(vec![false; n_free]);
         assemble_layout(&catalog, &ok).unwrap();
 
         let mut too_long = options();
-        too_long.freeze_mask = Some(vec![false; 15]);
+        too_long.freeze_mask = Some(vec![false; 22]);
         let err = assemble_layout(&catalog, &too_long).unwrap_err();
         assert_eq!(err.code, ErrorCode::Input);
         assert!(err.message.contains("freeze_mask length"));
@@ -734,11 +790,13 @@ mod tests {
             .position(|m| m.term_id == "moffat_seeing" && m.role == "beta")
             .unwrap();
         assert!((assembly.theta[beta_i] - MOFFAT_BETA).abs() < 1e-15);
-        assert!(assembly.priors[beta_i].is_none());
+        let beta_prior = assembly.priors[beta_i].unwrap();
+        assert!((beta_prior.mu - MOFFAT_BETA).abs() < 1e-15);
+        assert!((beta_prior.sigma - 1.0).abs() < 1e-15);
     }
 
     #[test]
-    fn default_schedule_has_three_steps_and_moffat_beta_stays_frozen() {
+    fn default_schedule_has_three_steps_and_moffat_beta_is_free() {
         let catalog = ingested_default_catalog();
         let assembly = assemble_theta(
             &catalog,
@@ -752,9 +810,12 @@ mod tests {
         assert_eq!(steps[0].name, "coarse");
         assert_eq!(steps[1].name, "mid");
         assert_eq!(steps[2].name, "full");
-        assert_eq!(steps[0].free_index.len(), 5);
-        assert_eq!(steps[1].free_index.len(), 10);
-        assert_eq!(steps[2].free_index.len(), 14);
+        // coarse: 2 tilt + defocus + 2 astig + flux + sky + moffat α,β + aniso 3 = 12
+        assert_eq!(steps[0].free_index.len(), 12);
+        // mid: + 2 coma + 2 trefoil + jitter = 17
+        assert_eq!(steps[1].free_index.len(), 17);
+        // full: + spherical + 2 sec-astig + diffusion = 21
+        assert_eq!(steps[2].free_index.len(), 21);
         assert_eq!(steps[2].free_index, assembly.free_index);
 
         let beta_i = assembly
@@ -764,8 +825,8 @@ mod tests {
             .unwrap();
         for step in &steps {
             assert!(
-                !step.free_index.contains(&beta_i),
-                "moffat beta must stay frozen in {}",
+                step.free_index.contains(&beta_i),
+                "moffat beta must be free in {}",
                 step.name
             );
         }
@@ -787,8 +848,8 @@ mod tests {
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0].name, "all");
         assert_eq!(steps[0].free_index, assembly.free_index);
-        assert_eq!(steps[0].free_index.len(), 14);
-        assert!(!steps[0].unfrozen_term_ids.iter().any(|id| id == "sky"));
+        assert_eq!(steps[0].free_index.len(), 21);
+        assert!(steps[0].unfrozen_term_ids.iter().any(|id| id == "sky"));
         assert!(!steps[0]
             .unfrozen_term_ids
             .iter()
@@ -852,5 +913,38 @@ mod tests {
         assert!((prior.mu - 0.1).abs() < 1e-15);
         assert!((prior.sigma - 0.3).abs() < 1e-15);
         assert!((prior_residual(0.4, &prior) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn anisotropic_kernel_inits_isotropic_then_zero_angle() {
+        let catalog = ingested_default_catalog();
+        let assembly = assemble_theta(
+            &catalog,
+            &options(),
+            Some(&dummy_star()),
+            Some(dummy_defocus()),
+        )
+        .unwrap();
+        let sigma_a = assembly
+            .param_meta
+            .iter()
+            .position(|m| m.term_id == "gaussian_aniso" && m.role == "sigma_a_px")
+            .unwrap();
+        let sigma_b = assembly
+            .param_meta
+            .iter()
+            .position(|m| m.term_id == "gaussian_aniso" && m.role == "sigma_b_px")
+            .unwrap();
+        let angle = assembly
+            .param_meta
+            .iter()
+            .position(|m| m.term_id == "gaussian_aniso" && m.role == "angle_rad")
+            .unwrap();
+        assert!((assembly.theta[sigma_a] - 0.3).abs() < 1e-15);
+        assert!((assembly.theta[sigma_b] - 0.3).abs() < 1e-15);
+        assert_eq!(assembly.theta[angle], 0.0);
+        assert!(assembly.priors[sigma_a].is_some());
+        assert!(assembly.priors[sigma_b].is_some());
+        assert!(assembly.priors[angle].is_some());
     }
 }

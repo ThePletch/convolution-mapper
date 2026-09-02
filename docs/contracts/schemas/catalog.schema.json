@@ -112,6 +112,7 @@
         "id": {
           "enum": [
             "gaussian_iso",
+            "gaussian_aniso",
             "moffat_iso",
             "linear_drift",
             "field_rotation"

@@ -31,7 +31,7 @@ pub struct KernelParameter {
     /// Physical unit of this coefficient (pixels, radians, seconds, or dimensionless).
     pub unit: &'static str,
     /// When true, this coefficient stays frozen even if the parent catalog term is free.
-    /// Moffat `beta` is frozen at 2.5 in v1 so it is never a Levenberg–Marquardt unknown.
+    /// No v1 kernel coefficient uses this; Moffat β is a free parameter with a Gaussian prior.
     pub always_frozen: bool,
 }
 
@@ -45,6 +45,26 @@ pub fn kernel_parameters(kind: KernelKind) -> &'static [KernelParameter] {
             unit: "px",
             always_frozen: false,
         }],
+        KernelKind::GaussianAniso => &[
+            KernelParameter {
+                // Semi-axis along the kernel angle, in detector pixels. (C3.6.6)
+                role: "sigma_a_px",
+                unit: "px",
+                always_frozen: false,
+            },
+            KernelParameter {
+                // Semi-axis perpendicular to the kernel angle, in detector pixels. (C3.6.6)
+                role: "sigma_b_px",
+                unit: "px",
+                always_frozen: false,
+            },
+            KernelParameter {
+                // Orientation of the σ_a axis from detector +x toward +y, in radians. (C3.6.6)
+                role: "angle_rad",
+                unit: "rad",
+                always_frozen: false,
+            },
+        ],
         KernelKind::MoffatIso { .. } => &[
             KernelParameter {
                 // Moffat scale α on the detector, in pixels. Related to FWHM by
@@ -54,10 +74,10 @@ pub fn kernel_parameters(kind: KernelKind) -> &'static [KernelParameter] {
                 always_frozen: false,
             },
             KernelParameter {
-                // Moffat exponent β; dimensionless and frozen in v1. (C3.6.2)
+                // Moffat exponent β; dimensionless. Init 2.5 with a Gaussian prior. (C3.6.2)
                 role: "beta",
                 unit: "1",
-                always_frozen: true,
+                always_frozen: false,
             },
         ],
         KernelKind::LinearDrift => &[
@@ -339,7 +359,7 @@ mod tests {
             Case {
                 name: "unsorted field basis",
                 patch: |v| {
-                    let i = term_index(v, "zernike_2_2");
+                    let i = term_index(v, "zernike_3_1");
                     v["terms"][i]["field_basis"]["terms"] = json!([[1, 0], [0, 0], [0, 1]]);
                 },
                 needle: "not sorted",

@@ -22,8 +22,12 @@ Always include the session-median of `|R_ij|` for the pairs:
 - (`gaussian_jitter`, `charge_diffusion`)
 - (`moffat_seeing`, `charge_diffusion`)
 - (`zernike_2_0`, `moffat_seeing`)
+- (`zernike_3_1`, `zernike_1_1`)
+- (`zernike_3_m1`, `zernike_1_m1`)
+- (`gaussian_aniso` `sigma_a_px`, `moffat_seeing` `alpha_px`)
+- (`gaussian_aniso` `sigma_a_px`, `gaussian_aniso` `sigma_b_px`)
 
-even if they are not flagged. These four are the documented blur degeneracies.
+even if they are not flagged. These are the documented blur and tilt–coma degeneracies.
 
 Session text in `diagnostics.json` / `psf-field report` SHALL state that stage-2 map \(\sigma\) ignore stage-1 off-diagonal covariances (C6.2) and are not \(\chi^2\)-inflated unless `covariance_chi2_scaled` is plotted.
 
@@ -41,7 +45,7 @@ For each phase `term_id`, a table with columns `u`, `v`, `a_stage1`, `a_hat`, `r
 
 The candidate list is the set of phase `(n,m)` with \(n \le n_{\max}\), valid C2.1, **not** already enabled in the catalog, plus kernel ids in C3.6 that are `enabled=false`.
 
-Frozen \(n_{\max}=7\). Tilt `(1,±1)` **is** included as a candidate (it diagnoses centroid error leaking into the model).
+Frozen \(n_{\max}=7\). Tilt `(1,±1)` is included as a candidate **only if** those terms are `enabled=false` in the catalog (they diagnose centroid error leaking into the model when tilt is not already a free parameter).
 
 ### C8.4.1a Which stars are scored (`ScoreOptions`)
 
@@ -82,7 +86,7 @@ Rank candidates by `|score|` descending.
 
 `weak_phase_all` means: look at kernels or amplitude, not more Zernikes.
 
-If the tilt candidate `zernike_1_1` or `zernike_1_m1` has \(\lvert\mathrm{score}\rvert \ge 0.15\), set `centroid_leak_suspect=true` on that star. Selection SHALL NOT enable tilt in \(\theta\) in response.
+If tilt is **enabled**, set `centroid_leak_suspect=true` when that star's `|R|` for (`zernike_3_1`, `zernike_1_1`) or (`zernike_3_m1`, `zernike_1_m1`) is \(\ge 0.90\), or when \(\sqrt{a_{1,1}^{2}+a_{1,-1}^{2}} > 3\sigma\) of the tilt prior. If tilt is **disabled**, the same flag is set when the tilt candidate `zernike_1_1` or `zernike_1_m1` has \(\lvert\mathrm{score}\rvert \ge 0.15\). Selection SHALL NOT change the catalog in response.
 
 ## C8.5 Residual spatial structure
 

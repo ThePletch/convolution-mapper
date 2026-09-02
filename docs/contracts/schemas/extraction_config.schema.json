@@ -33,7 +33,7 @@
     "selection_mode": {
       "type": "string",
       "enum": ["highest_snr", "snr_by_cell"],
-      "default": "highest_snr"
+      "default": "snr_by_cell"
     },
     "holdout_fraction": { "type": "number", "minimum": 0, "maximum": 0.5, "default": 0 },
     "holdout_seed": { "type": "integer", "minimum": 0 }

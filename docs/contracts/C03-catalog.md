@@ -101,7 +101,7 @@ with Jacobian \(1/\sigma\). If `family="none"`, no extra rows.
 v1 SHALL apply priors to **stage 1 local parameters** and to **stage 2 field coefficients** as follows:
 
 - Stage 1: prior on local \(a\).
-- Stage 2: prior on each \(c_{ij}\) with the same \(\mu,\sigma\) **only if** `field_basis` is a single constant term. If the basis has more than one monomial, stage-2 priors are **off** unless `PriorSpec` includes optional `"stage2": { "mean": [..], "sigma": [..] }` aligned with `terms`. The v1 default catalog does not set `stage2` priors except on kernel uniform terms.
+- Stage 2: prior on each \(c_{ij}\) with the same \(\mu,\sigma\) **only if** `field_basis` is a single constant term **and** `scope` is not `per_star`. If the basis has more than one monomial, stage-2 priors are **off** unless `PriorSpec` includes optional `"stage2": { "mean": [..], "sigma": [..] }` aligned with `terms`. The v1 default catalog does not set `stage2` priors except on kernel uniform terms. Per-star phase terms (tilt) SHALL NOT receive a stage-2 map.
 
 ## C3.5 Init estimators
 
@@ -146,7 +146,7 @@ The factor `0.35` is frozen (maps extra second-moment width to waves for the C10
 
 If extraction config `fwhm` is available on the Python side, pass it as `StarRecord` optional `aux` is **not** allowed into Rust. Instead `Stage1Options.expected_fwhm_px` (required) is used:
 
-Moffat with frozen \(\beta=2.5\): \(\mathrm{HWHM} = \alpha \sqrt{2^{1/\beta}-1}\). Set \(\mathrm{FWHM} =\) `expected_fwhm_px`, \(\alpha_0 = \mathrm{FWHM} / (2 \sqrt{2^{1/\beta}-1})\).
+Moffat with initialization \(\beta=2.5\): \(\mathrm{HWHM} = \alpha \sqrt{2^{1/\beta}-1}\). Set \(\mathrm{FWHM} =\) `expected_fwhm_px`, \(\alpha_0 = \mathrm{FWHM} / (2 \sqrt{2^{1/\beta}-1})\). Fitted \(\beta\) may leave 2.5; \(\alpha_0\) still uses 2.5.
 
 ## C3.6 Kernel catalog (closed set for v1)
 
@@ -166,7 +166,7 @@ with \(\sigma = \texttt{sigma\_px} \cdot r\) in FFT pixels. Truncate at \(5\sigm
 
 ### C3.6.2 `moffat_iso` (seeing)
 
-Parameters: `alpha_px` > 0, `beta` (frozen **2.5** unless `frozen=false` on beta; v1 default catalog freezes beta).
+Parameters: `alpha_px` > 0, `beta` (initialized at **2.5**; v1 default catalog leaves β free with a Gaussian prior \(\mu=2.5\), \(\sigma=1.0\)).
 
 \[
 K(x,y) = \bigl(1 + (R/\alpha)^{2}\bigr)^{-\beta}, \quad R^{2}=x^{2}+y^{2}
@@ -204,7 +204,33 @@ At a star with field \((x,y)\) mm, trail length in mm is \(|\omega| \cdot T \cdo
 
 Then apply C3.6.3 with that length and angle. This kernel is **field-dependent**; stage 1 fits a local `(length_px, angle_rad)` pair; stage 2 fits the three globals (C6.4).
 
-### C3.6.5 Kernel `enabled` flag
+### C3.6.5 `gaussian_aniso` (tracking / wind)
+
+Parameters: `sigma_a_px` > 0, `sigma_b_px` > 0, `angle_rad` (radians, detector \(+x\) toward \(+y\)).
+
+Let \(\sigma_a = \texttt{sigma\_a\_px}\cdot r\), \(\sigma_b = \texttt{sigma\_b\_px}\cdot r\) in FFT pixels, \(\phi=\) `angle_rad`. For FFT pixel offset \((x,y)\) from center:
+
+\[
+u = x\cos\phi + y\sin\phi, \qquad v = -x\sin\phi + y\cos\phi
+\]
+
+\[
+K(x,y) = \exp\bigl(-\tfrac12(u^{2}/\sigma_a^{2} + v^{2}/\sigma_b^{2})\bigr)
+\]
+
+Truncate at \(5\max(\sigma_a,\sigma_b)\). If \(\sigma_a\le 0\) or \(\sigma_b\le 0\) after bounds mapping, `NumericsError`.
+
+Closed form:
+
+\[
+\frac{\partial K}{\partial\sigma_a} = K\,\frac{u^{2}}{\sigma_a^{3}}, \qquad
+\frac{\partial K}{\partial\sigma_b} = K\,\frac{v^{2}}{\sigma_b^{3}}, \qquad
+\frac{\partial K}{\partial\phi} = K\,uv\bigl(1/\sigma_b^{2} - 1/\sigma_a^{2}\bigr).
+\]
+
+Initialization (frozen): \(\sigma_a\) from C3.5 zero-init (numeric prior mean); \(\sigma_b\) copies that value so the first iterate is isotropic; \(\phi=0\). Secondary-slot priors: \(\sigma_b\) uses the same `PriorSpec` as \(\sigma_a\); \(\phi\) has Gaussian \(\mu=0\), \(\sigma=\pi/4\).
+
+### C3.6.6 Kernel `enabled` flag
 
 Each kernel term has `enabled: bool`. Disabled kernels are omitted from the pipeline (not frozen-at-zero: omitted). Frozen-but-enabled kernels participate at their init/prior mean.
 
@@ -212,26 +238,29 @@ Each kernel term has `enabled: bool`. Disabled kernels are omitted from the pipe
 
 **Normative instance:** `schemas/psf_field_v1_default.catalog.json`. The table below is **informative**. If table and file disagree, the JSON file wins. Implementations SHALL load the JSON, not this table.
 
-`catalog_id`: `psf_field_v1_default`. Phase terms all `scope: per_session` for field maps; stage 1 still fits **local** copies (C4).
+`catalog_id`: `psf_field_v1_default`. Phase terms with `scope: per_session` are field-mapped in stage 2. Tilt is `scope: per_star` and is **not** field-mapped; the evaluator holds it at 0. Stage 1 still fits **local** copies of every enabled term (C4).
+
+Zero-mean Gaussian priors \(\sigma=0.15\) waves on unfrozen phase terms keep even-mode columns well-posed in focus (C2.8.4).
 
 | term_id | n,m | field `terms` | frozen | init | prior |
 |---|---|---|---|---|---|
 | `zernike_0_0` | 0,0 | `[[0,0]]` | **true** | zero | none |
-| `zernike_1_1` | 1,1 | `[[0,0]]` | **true**, `enabled=false` | zero | none |
-| `zernike_1_m1` | 1,-1 | `[[0,0]]` | **true**, `enabled=false` | zero | none |
-| `zernike_2_0` | 2,0 | `[[0,0],[1,0],[0,1],[2,0],[1,1],[0,2]]` | false | defocus_moment | none |
-| `zernike_2_2` | 2,2 | `[[0,0],[1,0],[0,1]]` | false | zero | none |
-| `zernike_2_m2` | 2,-2 | `[[0,0],[1,0],[0,1]]` | false | zero | none |
-| `zernike_3_1` | 3,1 | `[[0,0],[1,0],[0,1]]` | false | zero | none |
-| `zernike_3_m1` | 3,-1 | `[[0,0],[1,0],[0,1]]` | false | zero | none |
-| `zernike_3_3` | 3,3 | `[[0,0]]` | false | zero | none |
-| `zernike_3_m3` | 3,-3 | `[[0,0]]` | false | zero | none |
-| `zernike_4_0` | 4,0 | `[[0,0]]` | false | zero | none |
-| `zernike_4_2` | 4,2 | `[[0,0]]` | false | zero | none |
-| `zernike_4_m2` | 4,-2 | `[[0,0]]` | false | zero | none |
+| `zernike_1_1` | 1,1 | `[[0,0]]` | false, `scope: per_star` | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_1_m1` | 1,-1 | `[[0,0]]` | false, `scope: per_star` | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_2_0` | 2,0 | `[[0,0],[1,0],[0,1],[2,0],[1,1],[0,2]]` | false | defocus_moment | gaussian μ=0, σ=0.15 waves |
+| `zernike_2_2` | 2,2 | degree-2 full set | false | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_2_m2` | 2,-2 | degree-2 full set | false | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_3_1` | 3,1 | `[[0,0],[1,0],[0,1]]` | false | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_3_m1` | 3,-1 | `[[0,0],[1,0],[0,1]]` | false | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_3_3` | 3,3 | `[[0,0]]` | false | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_3_m3` | 3,-3 | `[[0,0]]` | false | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_4_0` | 4,0 | `[[0,0]]` | false | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_4_2` | 4,2 | `[[0,0]]` | false | zero | gaussian μ=0, σ=0.15 waves |
+| `zernike_4_m2` | 4,-2 | `[[0,0]]` | false | zero | gaussian μ=0, σ=0.15 waves |
 | `flux` | — | n/a | false | flux_sum | none |
-| `sky` | — | n/a | **true** | zero | none |
-| `moffat_seeing` | kernel moffat_iso | uniform | false | moffat_fwhm | gaussian `mean="init"`, `sigma_rel=0.5` on α; beta frozen 2.5 |
+| `sky` | — | n/a | false | zero | gaussian μ=0, σ=5 ADU |
+| `moffat_seeing` | kernel moffat_iso | uniform | false | moffat_fwhm | gaussian `mean="init"`, `sigma_rel=0.5` on α; β init 2.5 with gaussian μ=2.5, σ=1.0 |
+| `gaussian_aniso` | kernel gaussian_aniso | uniform | false | zero (numeric prior \(\mu=0.3\) ⇒ \(\sigma_a=\sigma_b=0.3\) px, \(\phi=0\)) | gaussian μ=0.3, σ=0.3 px on both widths; \(\phi\) gaussian μ=0, σ=π/4 |
 | `gaussian_jitter` | kernel gaussian_iso | uniform | false | zero (numeric prior \(\mu=0.1\) ⇒ \(a_0=0.1\) px) | gaussian μ=0.1, σ=0.3 px |
 | `charge_diffusion` | kernel gaussian_iso | uniform | false | zero (numeric prior \(\mu=0.3\) ⇒ \(a_0=0.3\) px) | gaussian μ=0.3, σ=0.1 px |
 | `linear_drift` | kernel | uniform | **true**, enabled=false | — | — |

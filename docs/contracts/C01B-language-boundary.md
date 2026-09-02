@@ -32,6 +32,8 @@ score_tests(residual: ndarray, variance: ndarray, pixel_mask: ndarray, theta_loc
 validate_jacobian(star: StarRecordDict, pupil: PupilSpecDict, catalog: CatalogDict, theta: ndarray) -> FdReportDict
 ```
 
+`fit_stage2` SHALL perform C6.8 even-mode relabelling and C6.9's single map-initialized refit; callers do not invoke those steps separately.
+
 `fit_stage1_batch` SHALL be embarrassingly parallel over stars: each star owns its problem, with no shared mutable arrays. Python threads SHALL NOT run the hot loop. The parallel iterator SHOULD be `rayon`.
 
 Dict types above are the JSON-object shapes of the schemas in `schemas/`. The Python public API SHALL accept pydantic models and convert via `.model_dump(mode="python")` at the wrapper; the PyO3 signatures MAY accept bound pyclasses that mirror those models.

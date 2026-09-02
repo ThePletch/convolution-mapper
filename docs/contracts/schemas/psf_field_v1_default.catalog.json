@@ -21,30 +21,30 @@
       "term_id": "zernike_1_1",
       "name": "Tilt X",
       "kind": "phase",
-      "scope": "per_session",
-      "frozen": true,
-      "enabled": false,
+      "scope": "per_star",
+      "frozen": false,
+      "enabled": true,
       "n": 1,
       "m": 1,
       "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves"
     },
     {
       "term_id": "zernike_1_m1",
       "name": "Tilt Y",
       "kind": "phase",
-      "scope": "per_session",
-      "frozen": true,
-      "enabled": false,
+      "scope": "per_star",
+      "frozen": false,
+      "enabled": true,
       "n": 1,
       "m": -1,
       "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves"
     },
     {
@@ -63,7 +63,7 @@
       },
       "bounds": [-5.0, 5.0],
       "init": { "method": "defocus_moment" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves"
     },
     {
@@ -75,10 +75,14 @@
       "enabled": true,
       "n": 2,
       "m": 2,
-      "field_basis": { "family": "monomial", "degree": 1, "terms": [[0, 0], [1, 0], [0, 1]] },
+      "field_basis": {
+        "family": "monomial",
+        "degree": 2,
+        "terms": [[0, 0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 2]]
+      },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves",
       "report": { "polar_pair": "zernike_2_m2", "scale": 1.0, "unit_label": "waves RMS" }
     },
@@ -91,10 +95,14 @@
       "enabled": true,
       "n": 2,
       "m": -2,
-      "field_basis": { "family": "monomial", "degree": 1, "terms": [[0, 0], [1, 0], [0, 1]] },
+      "field_basis": {
+        "family": "monomial",
+        "degree": 2,
+        "terms": [[0, 0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 2]]
+      },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves"
     },
     {
@@ -109,7 +117,7 @@
       "field_basis": { "family": "monomial", "degree": 1, "terms": [[0, 0], [1, 0], [0, 1]] },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves",
       "report": { "polar_pair": "zernike_3_m1", "scale": 1.0, "unit_label": "waves RMS" }
     },
@@ -125,7 +133,7 @@
       "field_basis": { "family": "monomial", "degree": 1, "terms": [[0, 0], [1, 0], [0, 1]] },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves"
     },
     {
@@ -140,7 +148,7 @@
       "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves",
       "report": { "polar_pair": "zernike_3_m3", "scale": 1.0, "unit_label": "waves RMS" }
     },
@@ -156,7 +164,7 @@
       "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves"
     },
     {
@@ -171,7 +179,7 @@
       "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves"
     },
     {
@@ -186,7 +194,7 @@
       "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves",
       "report": { "polar_pair": "zernike_4_m2", "scale": 1.0, "unit_label": "waves RMS" }
     },
@@ -202,7 +210,7 @@
       "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
       "bounds": [-5.0, 5.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 0.15 },
       "units": "waves"
     },
     {
@@ -222,11 +230,11 @@
       "name": "Residual sky",
       "kind": "photometric",
       "scope": "per_star",
-      "frozen": true,
+      "frozen": false,
       "enabled": true,
       "bounds": [-1000.0, 1000.0],
       "init": { "method": "zero" },
-      "prior": { "family": "none" },
+      "prior": { "family": "gaussian", "mean": 0.0, "sigma": 5.0 },
       "units": "ADU"
     },
     {
@@ -241,6 +249,20 @@
       "bounds": [0.0, 20.0],
       "init": { "method": "moffat_fwhm" },
       "prior": { "family": "gaussian", "mean": "init", "sigma_rel": 0.5 },
+      "units": "px"
+    },
+    {
+      "term_id": "gaussian_aniso",
+      "name": "Anisotropic Gaussian (tracking / wind)",
+      "kind": "kernel",
+      "scope": "per_exposure",
+      "frozen": false,
+      "enabled": true,
+      "kernel": { "id": "gaussian_aniso" },
+      "field_basis": { "family": "monomial", "degree": 0, "terms": [[0, 0]] },
+      "bounds": [0.0, 20.0],
+      "init": { "method": "zero" },
+      "prior": { "family": "gaussian", "mean": 0.3, "sigma": 0.3 },
       "units": "px"
     },
     {
@@ -318,16 +340,23 @@
       "name": "coarse",
       "unfrozen_term_ids": [
         "flux",
+        "sky",
+        "zernike_1_1",
+        "zernike_1_m1",
         "zernike_2_0",
         "zernike_2_2",
         "zernike_2_m2",
-        "moffat_seeing"
+        "moffat_seeing",
+        "gaussian_aniso"
       ]
     },
     {
       "name": "mid",
       "unfrozen_term_ids": [
         "flux",
+        "sky",
+        "zernike_1_1",
+        "zernike_1_m1",
         "zernike_2_0",
         "zernike_2_2",
         "zernike_2_m2",
@@ -336,6 +365,7 @@
         "zernike_3_3",
         "zernike_3_m3",
         "moffat_seeing",
+        "gaussian_aniso",
         "gaussian_jitter"
       ]
     },
@@ -343,6 +373,9 @@
       "name": "full",
       "unfrozen_term_ids": [
         "flux",
+        "sky",
+        "zernike_1_1",
+        "zernike_1_m1",
         "zernike_2_0",
         "zernike_2_2",
         "zernike_2_m2",
@@ -354,6 +387,7 @@
         "zernike_4_2",
         "zernike_4_m2",
         "moffat_seeing",
+        "gaussian_aniso",
         "gaussian_jitter",
         "charge_diffusion"
       ]

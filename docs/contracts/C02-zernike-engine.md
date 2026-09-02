@@ -127,7 +127,7 @@ in stamp-local pixels. Let polar radius from stamp center \(c_\star=(S-1)/2\).
 With all \(a_k=0\):
 
 - Peak pixel SHALL be the unique maximum and SHALL lie at the stamp-center pixel (index \((c_\star, c_\star)\)).
-- **Azimuthal anisotropy (not radial slope).** Let \(r_p\) be the distance in stamp pixels from \(c_\star\). Exclude the center (\(r_p < 0.5\,\mathrm{px}\)). Bin the remaining pixels into annuli of width **0.25 px**. An annulus is tested only if it contains \(\ge 8\) pixels. Let \(\mu\) be the mean intensity in the annulus. Relative azimuthal RMS \(\mathrm{rms}(I-\mu)/\max(\mu, 10^{-15})\) SHALL be \(< 10^{-4}\). This catches grid/fftshift anisotropy and Seidel-like \(m=1\) leakage; it SHALL NOT be read as a bound on the Airy radial gradient.
+- **Azimuthal anisotropy (not radial slope).** Let \(r_p\) be the distance in stamp pixels from \(c_\star\). Exclude the center (\(r_p < 0.5\,\mathrm{px}\)). Bin the remaining pixels into annuli of width **0.25 px**. An annulus is tested only if it contains \(\ge 8\) pixels. For each pixel in the annulus, form the 90° rotate about \(c_\star\) in detector \((x,y)\): \((x,y)\mapsto(c_{\star,x}-(y-c_{\star,y}),\, c_{\star,y}+(x-c_{\star,x}))\), sampled at the nearest stamp pixel. Relative RMS of \(I - I_{\mathrm{rot}}\) over the annulus, divided by \(\max(\mu, 10^{-15})\) where \(\mu\) is the annulus mean, SHALL be \(< 10^{-4}\). This catches grid/fftshift anisotropy and Seidel-like \(m=1\) leakage. Comparing each pixel to the annulus mean SHALL NOT be used: a 0.25 px bin mixes on-axis and diagonal samples of the Airy rings and is dominated by the radial gradient.
 
 ### C2.8.3 Defocus evenness
 
@@ -141,17 +141,25 @@ and each \(I(\pm\alpha)\) SHALL pass the same azimuthal-anisotropy test as C2.8.
 
 ### C2.8.4 Defocus at zero has vanishing Jacobian column
 
-At all \(a=0\), the Jacobian column for \(a_{2,0}\) (C9.8, then resampled and weighted as C5) SHALL have \(\ell_2\) norm \(< 10^{-8}\) times that column’s norm at \(a_{2,0}=0.2\). (Even function ⇒ zero derivative at 0.)
+At all \(a=0\), the Jacobian column for \(a_{2,0}\) (C9.8, then resampled and weighted as C5) SHALL have \(\ell_2\) norm \(< 10^{-8}\) times that column’s norm at \(a_{2,0}=0.2\). (Even function ⇒ zero derivative at 0.) The same vanishing holds for every even-\(n\) phase column on a real centrosymmetric pupil; the defocus column is the required check. Zero-mean Gaussian priors on those terms (C3.7) keep \(H\) well-posed in focus.
 
-### C2.8.5 Zernike coma is centroid-preserving
+### C2.8.5 Zernike coma has G-tilt, not Z-tilt
 
-For \(a_{3,1}=0.4\) waves, all other \(a=0\):
+Orthonormal \(Z_3^{\pm 1}\) is orthogonal to \(Z_1^{\pm 1}\) (Z-tilt) but has a nonzero mean phase gradient (G-tilt). The diffraction first moment of \(|U|^2\) follows G-tilt, not \(c_\star\).
+
+For \(a_{3,1}=0.4\) waves, all other \(a=0\), on the C10.1 camera:
 
 \[
-|\bar x - c_\star| < 5\times 10^{-3}\ \mathrm{px}, \qquad |\bar y - c_\star| < 5\times 10^{-3}\ \mathrm{px}
+\Delta_G = a_{3,1}\,\sqrt{8}\,\frac{2\lambda}{D}\Big/\mathrm{pixel\_scale\_rad}
 \]
 
-Repeat for \(a_{3,-1}=0.4\). A Seidel (unbalanced \(\rho^3\cos\theta\)) implementation SHALL fail this test; that is the point.
+(analytic \(\langle\partial\tilde Z_3^1/\partial\xi\rangle=\sqrt{8}\) on the unit disk, converted to detector pixels). Then
+
+\[
+|\bar y - c_\star| < 5\times 10^{-3}\ \mathrm{px}, \qquad |\bar x - c_\star - \Delta_G| < 0.15\ \mathrm{px}.
+\]
+
+Repeat for \(a_{3,-1}=0.4\) with the axes swapped. A Seidel (unbalanced \(\rho^3\cos\theta\)) implementation has a larger G-tilt and SHALL fail the along-axis closed form. Stage-1 therefore fits \(Z_1^{\pm 1}\) as per-star nuisances (C3.7) so coma is not forced to absorb a centroid residual.
 
 ### C2.8.6 Coma sign flips the flare
 
@@ -179,4 +187,4 @@ No PSF is computed here. PSF is C9.
 
 ## C2.10 Tilt modes
 
-\(Z_1^{\pm 1}\) SHALL be implemented (the generator is generic). The **v1 default catalog SHALL freeze and exclude them** (C3.7) because they are degenerate with the extraction centroid. Tests MAY unfreeze them.
+\(Z_1^{\pm 1}\) SHALL be implemented (the generator is generic). The **v1 default catalog SHALL enable them as `scope: per_star`** (C3.7) with a zero-mean Gaussian prior. They are not field-mapped: they absorb the G-tilt of coma (C2.8.5) and residual extraction-centroid error. The evaluator holds them at 0 so the returned PSF is centered (C7.3). Tests MAY disable them.

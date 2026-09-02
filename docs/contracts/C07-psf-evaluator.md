@@ -20,7 +20,7 @@ This removes an even-size oversampling footgun.
 
 ## C7.3 Local parameters from field maps
 
-For each phase term, \(a = \sum c_{ij} u^i v^j\) with \((u,v)\) from NOR.9 using the **session** `R_field` (detector half-diagonal), even if `(x,y)` is outside the detector. No clamping of \((u,v)\).
+For each phase term with `scope` other than `per_star`, \(a = \sum c_{ij} u^i v^j\) with \((u,v)\) from NOR.9 using the **session** `R_field` (detector half-diagonal), even if `(x,y)` is outside the detector. No clamping of \((u,v)\). Per-star tilt is held at 0: the evaluated PSF is centered on `EvalGrid.centroid_xy_px` for deconvolution.
 
 For uniform kernels, use `kernel_globals`. For `field_rotation`, evaluate C3.6.4 at `(x,y)`.
 

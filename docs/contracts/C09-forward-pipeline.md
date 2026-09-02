@@ -160,7 +160,7 @@ with frequencies \(k_x, k_y\) in `fftfreq` convention (0, …, \(N_f/2-1\), \(-N
 
 Each detector pixel is a square of side \(r\) FFT pixels (C9.7), not necessarily integer.
 
-**Identity:** area-weighted average (box integration) of \(I^{\mathrm{fft}}\) over the square of side \(r\) centered on the detector pixel’s conjugate location. Nodes that fall outside `[0, N_f)` contribute 0 (no wrap).
+**Identity:** box integral of \(I^{\mathrm{fft}}\) over the square of side \(r\) centered on the detector pixel’s conjugate location (the stored stamp value is the integral, not the mean). Nodes that fall outside `[0, N_f)` contribute 0 (no wrap).
 
 Place detector pixel \((i,j)\) (stamp-local, 0-based) at FFT coordinates:
 
@@ -173,7 +173,7 @@ The integration domain is the axis-aligned square \([q_{\mathrm{ctr}}-r/2, q_{\m
 
 If the integrated weight is 0, that detector pixel is 0.
 
-After filling the stamp \(m_{ij}\), **do not** re-normalize to unit sum (flux \(F\) is a free parameter). The unit-sum constraint already held on the FFT grid; box integration approximately conserves flux. C10.4 checks \(\sum m\) is within 2% of 1 for the C10.1 camera at zero aberration before flux scaling. That 2% check is a **pipeline** sanity bound, not the resample definition (C9.10.3).
+After filling the stamp \(m_{ij}\), **do not** re-normalize to unit sum (flux \(F\) is a free parameter). The stored value is the **box integral** of \(I^{\mathrm{fft}}\) over the \(r\times r\) square (not the mean). Unit-sum on the FFT grid therefore maps to an approximately unit-sum stamp. C10.4 checks \(\sum m \in [0.94, 1.02]\) for the C10.1 camera at zero aberration before flux scaling: the Airy wings outside \(S=31\) carry a few percent of the energy. That bound is a **pipeline** sanity check, not the resample definition (C9.10.3).
 
 ### C9.10.3 Resample harness (load-bearing)
 

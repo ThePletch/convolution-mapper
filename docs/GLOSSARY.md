@@ -9,5 +9,6 @@
 | FWHM | Full width at half maximum. |
 | LM | Levenberg–Marquardt nonlinear least squares. |
 | OSA | Optical Society of America. Sequential OSA index \(j = (n(n+2)+m)/2\) is used for ordering and reports only; the engine API is keyed by \((n, m)\). |
-| PSF | Point-spread function. This crate's Zernike engine evaluates orthonormal phase on the pupil; the detector PSF is produced later by the forward pipeline. |
+| OTF | Optical transfer function. Fourier transform of the PSF; deconvolution divides by it up to detector Nyquist. |
+| PSF | Point-spread function. This crate's Zernike engine evaluates orthonormal phase on the pupil; the detector PSF is produced later by the forward pipeline. The evaluator's PSF is the v1 input to downstream deconvolution. |
 | RMS | Root mean square. Zernike coefficients are in waves RMS over the supplied pupil mask after discrete normalization. |
