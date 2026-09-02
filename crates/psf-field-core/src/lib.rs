@@ -1,9 +1,9 @@
 //! PSF field modeler core.
 //!
-//! Types, ingest, errors, the generic `(n, m)` Zernike engine, and the pupil-to-
-//! FFT-grid intensity map (C9.1 steps 1–5) live here. Later pipeline stages
-//! (kernels, resample, Jacobian, LM) are unimplemented until their contracts
-//! are built.
+//! Types, ingest, errors, the generic `(n, m)` Zernike engine, the pupil-to-
+//! FFT-grid intensity map, Fourier shift, Gauss–Legendre detector resampling,
+//! and flux/sky scaling. Convolution kernels, the analytic Jacobian, and LM
+//! remain unimplemented until their contracts are built.
 
 pub mod catalog;
 pub mod diag;
@@ -24,6 +24,13 @@ pub mod zernike;
 
 pub use catalog::{kernel_parameters, KernelParameter};
 pub use error::{ErrorCode, ErrorModule, PsfFieldError};
+pub use forward::{
+    fft_grid_intensity, fft_grid_intensity_from_phase, forward_psf, FftGridIntensity,
+    ForwardPsfSpec,
+};
+pub use resample::{
+    apply_flux_and_sky, box_resample, fourier_shift, oversampling_factor, stamp_center,
+};
 pub use theta::{
     assemble_layout, assemble_theta, defocus_moment_init, dtheta_du, evaluate_gaussian_prior,
     initialize_theta, moffat_alpha_from_fwhm, prior_residual, schedule_steps, theta_from_unbounded,

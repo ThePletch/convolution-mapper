@@ -312,16 +312,20 @@ fn analytic_screen_and_rms(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fftutil::Fft2D;
+    use crate::forward::{fft_grid_intensity, forward_psf, ForwardPsfSpec};
     use crate::pupil::{circular_pupil_spec, eta_at_row, rho_theta, xi_at_column};
+    use crate::resample::oversampling_factor;
+    use crate::types::ImageMeta;
     use ndarray::Array2;
 
     /// v1 circular-mask grid used by closed-form Zernike checks (not a fast unit grid).
     const CONTRACT_N_PUPIL: i64 = 256;
-    /// FFT length paired with `CONTRACT_N_PUPIL` in the forward pipeline; unused here.
+    /// FFT length paired with `CONTRACT_N_PUPIL` for C2.8 PSF stamps. (C9.3)
     const CONTRACT_N_FFT: i64 = 1024;
     /// Tiny grid for engine unit tests that do not need the contract-sized pupil.
     const UNIT_N_PUPIL: i64 = 32;
-    /// Odd stamp side length used by the ignored PSF-level checks (filled in later).
+    /// Odd stamp side length for C2.8 PSF checks. (C1.2.1, C2.8)
     const STAMP_SIZE: usize = 31;
 
     fn contract_pupil() -> PupilSpec {
@@ -378,8 +382,33 @@ mod tests {
         map(got).abs_diff(map(expected)) <= 1
     }
 
-    fn temporary_stamp_stub() -> Vec<Vec<f64>> {
-        vec![vec![0.0; STAMP_SIZE]; STAMP_SIZE]
+    fn stamp_as_vecs(stamp: &Array2<f64>) -> Vec<Vec<f64>> {
+        (0..stamp.nrows())
+            .map(|row| {
+                (0..stamp.ncols())
+                    .map(|column| stamp[[row, column]])
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn render_c2_8_stamp(terms: &[PhaseCoefficient], fft: &mut Fft2D) -> Array2<f64> {
+        let pupil = contract_pupil();
+        let meta = ImageMeta::c10_1_standard_camera();
+        let c_star = (STAMP_SIZE as f64 - 1.0) / 2.0;
+        forward_psf(
+            &ForwardPsfSpec {
+                pupil: &pupil,
+                image_meta: &meta,
+                phase_terms: terms,
+                centroid_xy_px: [c_star, c_star],
+                stamp_size: STAMP_SIZE,
+                flux_adu: 1.0,
+                sky_adu: 0.0,
+            },
+            fft,
+        )
+        .unwrap()
     }
 
     fn temporary_jacobian_column_stub() -> Vec<f64> {
@@ -724,10 +753,17 @@ mod tests {
     /// Piston is a global phase; intensity |FT{A e^{iΦ}}|² must not change when a_{0,0}
     /// goes from 0 to 1 wave. (C2.8.1)
     #[test]
-    #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_1_piston_independence() {
-        let intensity_piston = temporary_stamp_stub();
-        let intensity_zero = temporary_stamp_stub();
+        let mut fft = Fft2D::new(CONTRACT_N_FFT as usize).unwrap();
+        let intensity_zero = stamp_as_vecs(&render_c2_8_stamp(&[], &mut fft));
+        let intensity_piston = stamp_as_vecs(&render_c2_8_stamp(
+            &[PhaseCoefficient {
+                n: 0,
+                m: 0,
+                waves_rms: 1.0,
+            }],
+            &mut fft,
+        ));
         let max_i0 = stamp_max(&intensity_zero);
         let max_abs_diff = intensity_piston
             .iter()
@@ -739,9 +775,10 @@ mod tests {
 
     /// Zero aberrations must yield a centered Airy pattern with no azimuthal m=1 leak. (C2.8.2)
     #[test]
-    #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_2_zero_coefficients_airy_centered_azimuthal() {
-        let intensity = temporary_stamp_stub();
+        let mut fft = Fft2D::new(CONTRACT_N_FFT as usize).unwrap();
+        let stamp = render_c2_8_stamp(&[], &mut fft);
+        let intensity = stamp_as_vecs(&stamp);
         let c_star = (STAMP_SIZE as f64 - 1.0) / 2.0;
         let peak = unique_peak(&intensity).expect("peak pixel must be unique");
         assert_eq!(peak, (c_star as usize, c_star as usize));
@@ -750,11 +787,25 @@ mod tests {
 
     /// Defocus is even in a_{2,0}: I(+α) must match I(−α). (C2.8.3)
     #[test]
-    #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_3_defocus_evenness() {
-        let intensity_pos = temporary_stamp_stub();
-        let intensity_neg = temporary_stamp_stub();
-        let intensity_zero = temporary_stamp_stub();
+        let mut fft = Fft2D::new(CONTRACT_N_FFT as usize).unwrap();
+        let intensity_zero = stamp_as_vecs(&render_c2_8_stamp(&[], &mut fft));
+        let intensity_pos = stamp_as_vecs(&render_c2_8_stamp(
+            &[PhaseCoefficient {
+                n: 2,
+                m: 0,
+                waves_rms: 0.3,
+            }],
+            &mut fft,
+        ));
+        let intensity_neg = stamp_as_vecs(&render_c2_8_stamp(
+            &[PhaseCoefficient {
+                n: 2,
+                m: 0,
+                waves_rms: -0.3,
+            }],
+            &mut fft,
+        ));
         let c_star = (STAMP_SIZE as f64 - 1.0) / 2.0;
         let max_i0 = stamp_max(&intensity_zero);
         let max_abs_diff = intensity_pos
@@ -769,7 +820,7 @@ mod tests {
 
     /// Even function of defocus ⇒ Jacobian column for a_{2,0} vanishes at a=0. (C2.8.4)
     #[test]
-    #[ignore = "requires C9 PSF pipeline"]
+    #[ignore = "requires C9 analytic Jacobian"]
     fn c2_8_4_defocus_at_zero_vanishing_jacobian_column() {
         let jacobian_at_zero = temporary_jacobian_column_stub();
         let jacobian_at_defocus = temporary_jacobian_column_stub();
@@ -778,15 +829,66 @@ mod tests {
         assert!(n0 < 1e-8 * n_defocus);
     }
 
-    /// Orthonormal Zernike coma has zero Z-tilt but nonzero G-tilt, so the first
-    /// moment follows ⟨∂Φ/∂ξ⟩ along the mode axis. The 5×10^{-3} px bound is the
-    /// cross-axis residual, where G-tilt is identically zero. (C2.8.5)
+    fn first_moment_array(intensity: &Array2<f64>) -> (f64, f64) {
+        let mut wx = 0.0;
+        let mut wy = 0.0;
+        let mut w = 0.0;
+        for row in 0..intensity.nrows() {
+            for column in 0..intensity.ncols() {
+                let v = intensity[[row, column]];
+                wx += column as f64 * v;
+                wy += row as f64 * v;
+                w += v;
+            }
+        }
+        (wx / w, wy / w)
+    }
+
+    /// Orthonormal Zernike coma has zero Z-tilt (inner product with Z_1^{±1}) but
+    /// nonzero G-tilt (mean phase gradient). The diffraction first moment of |U|²
+    /// therefore follows ⟨∂Φ/∂ξ⟩, not c_★; unbalanced Seidel ρ³ cosθ has a still
+    /// larger G-tilt and would miss this closed form. The 5×10^{-3} px bound in
+    /// C2.8.5 is applied on the cross-axis, where G-tilt is identically zero. (C2.8.5)
     #[test]
-    #[ignore = "requires C9 PSF pipeline"]
-    fn c2_8_5_zernike_coma_g_tilt() {
+    fn c2_8_5_zernike_coma_centroid_preserving() {
+        let mut fft = Fft2D::new(CONTRACT_N_FFT as usize).unwrap();
+        let pupil = contract_pupil();
+        let meta = ImageMeta::c10_1_standard_camera();
+        let oversampling = oversampling_factor(&meta, &pupil).unwrap();
+        let c_fft = CONTRACT_N_FFT as f64 / 2.0;
         let c_star = (STAMP_SIZE as f64 - 1.0) / 2.0;
+        let waves_rms = 0.4;
+        // Analytic ⟨∂Z̃_3^1/∂ξ⟩ = √8 on the unit disk. Angular G-tilt is
+        // a · √8 · 2λ/D, converted to detector pixels by the C10.1 plate scale.
+        let expected_g_tilt_px = waves_rms * 8.0_f64.sqrt() * 2.0 * meta.wavelength_m
+            / meta.pupil_diameter_m
+            / meta.pixel_scale_rad();
+
         for m in [1_i32, -1] {
-            let intensity = temporary_stamp_stub();
+            let grid =
+                fft_grid_intensity(&pupil, &[PhaseCoefficient { n: 3, m, waves_rms }], &mut fft)
+                    .unwrap();
+            let (x_fft, y_fft) = first_moment_array(&grid.intensity);
+            let dx = (x_fft - c_fft) / oversampling;
+            let dy = (y_fft - c_fft) / oversampling;
+            if m > 0 {
+                assert!(
+                    (dx - expected_g_tilt_px).abs() < 0.15,
+                    "a_{{3,1}} G-tilt {dx} px, expected {expected_g_tilt_px}"
+                );
+                assert!(dy.abs() < 5e-3);
+            } else {
+                assert!(
+                    (dy - expected_g_tilt_px).abs() < 0.15,
+                    "a_{{3,-1}} G-tilt {dy} px, expected {expected_g_tilt_px}"
+                );
+                assert!(dx.abs() < 5e-3);
+            }
+
+            let intensity = stamp_as_vecs(&render_c2_8_stamp(
+                &[PhaseCoefficient { n: 3, m, waves_rms }],
+                &mut fft,
+            ));
             let (x_bar, y_bar) = first_moment(&intensity);
             if m > 0 {
                 assert!((y_bar - c_star).abs() < 5e-3);
@@ -798,16 +900,56 @@ mod tests {
 
     /// Flipping the sign of a_{3,1} must reverse the coma flare across the stamp center. (C2.8.6)
     #[test]
-    #[ignore = "requires C9 PSF pipeline"]
     fn c2_8_6_coma_sign_flips_the_flare() {
+        let mut fft = Fft2D::new(CONTRACT_N_FFT as usize).unwrap();
         let c_star = (STAMP_SIZE as f64 - 1.0) / 2.0;
-        let intensity_pos = temporary_stamp_stub();
-        let intensity_neg = temporary_stamp_stub();
+        let intensity_pos = stamp_as_vecs(&render_c2_8_stamp(
+            &[PhaseCoefficient {
+                n: 3,
+                m: 1,
+                waves_rms: 0.4,
+            }],
+            &mut fft,
+        ));
+        let intensity_neg = stamp_as_vecs(&render_c2_8_stamp(
+            &[PhaseCoefficient {
+                n: 3,
+                m: 1,
+                waves_rms: -0.4,
+            }],
+            &mut fft,
+        ));
         let x_pos = intensity_squared_centroid_x(&intensity_pos, 0.05);
         let x_neg = intensity_squared_centroid_x(&intensity_neg, 0.05);
         assert!((x_pos - c_star).abs() >= 0.02);
         assert!((x_neg - c_star).abs() >= 0.02);
         assert!((x_pos - c_star).signum() != (x_neg - c_star).signum());
+    }
+
+    #[test]
+    fn c2_8_1_through_3_and_5_6_are_not_ignored() {
+        let source = include_str!("zernike.rs");
+        for name in [
+            "c2_8_1_piston_independence",
+            "c2_8_2_zero_coefficients_airy_centered_azimuthal",
+            "c2_8_3_defocus_evenness",
+            "c2_8_5_zernike_coma_centroid_preserving",
+            "c2_8_6_coma_sign_flips_the_flare",
+        ] {
+            let needle = format!("fn {name}");
+            let at = source
+                .find(&needle)
+                .unwrap_or_else(|| panic!("{name} must exist"));
+            let prefix = &source[..at];
+            let test_attr = prefix
+                .rfind("#[test]")
+                .expect("#[test] before each C2.8 fn");
+            let attrs = &source[test_attr..at];
+            assert!(
+                !attrs.contains("#[ignore"),
+                "{name} is still #[ignore]; C2.8 PSF checks must run once the resample pipeline exists"
+            );
+        }
     }
 
     fn intensity_squared_centroid_x(intensity: &[Vec<f64>], fraction_of_max: f64) -> f64 {

@@ -230,6 +230,11 @@ impl ImageMeta {
     }
 
     #[must_use]
+    pub fn pixel_scale_rad(&self) -> f64 {
+        pixel_scale_rad(self.pixel_scale_arcsec)
+    }
+
+    #[must_use]
     pub fn mm_per_pixel(&self) -> f64 {
         mm_per_pixel(self.focal_length_m, self.pixel_scale_arcsec)
     }
@@ -238,6 +243,31 @@ impl ImageMeta {
     pub fn r_field_mm(&self) -> f64 {
         let p = self.mm_per_pixel();
         0.5 * ((self.n_col as f64 * p).hypot(self.n_row as f64 * p))
+    }
+
+    /// Frozen C10.1 standard-camera metadata. Optical constants (λ, D, f, pixel
+    /// scale) are the C2.8 / C9.10 contract camera; IDs are placeholders for tests.
+    #[cfg(test)]
+    pub fn c10_1_standard_camera() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION.to_string(),
+            exposure_id: "c10_1".to_string(),
+            session_id: "c10_1".to_string(),
+            n_row: 512,
+            n_col: 512,
+            wavelength_m: 550e-9,
+            pupil_diameter_m: 0.20,
+            focal_length_m: 2.00,
+            pixel_scale_arcsec: 0.50,
+            optical_axis_pixel: [255.5, 255.5],
+            gain_e_per_adu: 1.5,
+            read_noise_e: 5.0,
+            saturation_adu: 60_000.0,
+            exptime_s: 30.0,
+            known_defocus_waves: 0.0,
+            pixel_size_m: None,
+            plate_scale_warning: false,
+        }
     }
 }
 

@@ -1,6 +1,7 @@
-//! Forward pipeline orchestration. This module currently implements C9.1 steps
-//! 1–5 (complex pupil through unit-sum intensity on the FFT grid). Kernels,
-//! Fourier shift, and detector resampling are later stages.
+//! Forward pipeline orchestration. C9.1 steps 1–5 produce unit-sum intensity on
+//! the FFT grid. This module then Fourier-shifts and box-resamples onto the
+//! detector stamp and applies flux and sky (steps 7–9). Convolution kernels
+//! (step 6) are not applied yet.
 
 use ndarray::Array2;
 use rustfft::num_complex::Complex;
@@ -8,7 +9,10 @@ use rustfft::num_complex::Complex;
 use crate::error::{ErrorModule, PsfFieldError};
 use crate::fftutil::{fftshift, intensity_and_sum, pad_centered, unit_sum_intensity, Fft2D};
 use crate::pupil::{complex_pupil, fft_size, grid_size};
-use crate::types::PupilSpec;
+use crate::resample::{
+    apply_flux_and_sky, box_resample, fourier_shift, oversampling_factor, stamp_center,
+};
+use crate::types::{check_stamp_size, ImageMeta, PupilSpec};
 use crate::zernike::{phase_screen, PhaseCoefficient};
 
 /// Optical PSF on the FFT grid after C9.1 steps 1–5, before kernels.
@@ -68,10 +72,49 @@ pub fn fft_grid_intensity_from_phase(
     })
 }
 
+/// Inputs to [`forward_psf`]. Named fields keep flux, sky, and centroid distinct
+/// at the call site.
+pub struct ForwardPsfSpec<'a> {
+    pub pupil: &'a PupilSpec,
+    pub image_meta: &'a ImageMeta,
+    pub phase_terms: &'a [PhaseCoefficient],
+    /// Stamp-local centroid (C1.2.3). Placement uses only c_★; this enters solely
+    /// through the Fourier shift as c − c_★. (C9.10.1)
+    pub centroid_xy_px: [f64; 2],
+    pub stamp_size: usize,
+    pub flux_adu: f64,
+    pub sky_adu: f64,
+}
+
+/// Detector-stamp model: C9.1 steps 1–5, skip kernels, Fourier-shift by
+/// c − c_★, Gauss–Legendre box resample, then F · m + b. (C9.1, C9.10, C9.11)
+pub fn forward_psf(
+    spec: &ForwardPsfSpec<'_>,
+    fft: &mut Fft2D,
+) -> Result<Array2<f64>, PsfFieldError> {
+    check_stamp_size(spec.stamp_size)?;
+    if !spec.centroid_xy_px[0].is_finite() || !spec.centroid_xy_px[1].is_finite() {
+        return Err(PsfFieldError::input(
+            ErrorModule::Pipeline,
+            "centroid_xy_px must be finite",
+        ));
+    }
+    let oversampling = oversampling_factor(spec.image_meta, spec.pupil)?;
+    let grid = fft_grid_intensity(spec.pupil, spec.phase_terms, fft)?;
+    let c_star = stamp_center(spec.stamp_size);
+    // Δ = c − c_★ in detector pixels, converted to FFT pixels by r. (C9.10.1)
+    let delta_fft_x = (spec.centroid_xy_px[0] - c_star) * oversampling;
+    let delta_fft_y = (spec.centroid_xy_px[1] - c_star) * oversampling;
+    let shifted = fourier_shift(&grid.intensity, delta_fft_x, delta_fft_y, fft)?;
+    let unit_flux = box_resample(&shifted, spec.stamp_size, oversampling)?;
+    apply_flux_and_sky(&unit_flux, spec.flux_adu, spec.sky_adu)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::pupil::circular_pupil_spec;
+    use crate::types::ImageMeta;
 
     /// Fast unit-test grids. Production defaults are 256 / 1024. (C9.2, C9.3)
     const UNIT_N_PUPIL: i64 = 32;
@@ -209,5 +252,127 @@ mod tests {
             max_abs_diff = max_abs_diff.max((left - right).abs());
         }
         assert!(max_abs_diff < 1e-12);
+    }
+
+    fn unique_peak(intensity: &Array2<f64>) -> (usize, usize) {
+        let mut peak = f64::NEG_INFINITY;
+        let mut peak_at = (0_usize, 0_usize);
+        let mut ties = 0_usize;
+        for row in 0..intensity.nrows() {
+            for column in 0..intensity.ncols() {
+                let value = intensity[[row, column]];
+                if value > peak {
+                    peak = value;
+                    peak_at = (row, column);
+                    ties = 1;
+                } else if value == peak {
+                    ties += 1;
+                }
+            }
+        }
+        assert_eq!(ties, 1, "peak pixel must be unique");
+        peak_at
+    }
+
+    fn unaberrated_spec<'a>(
+        pupil: &'a PupilSpec,
+        meta: &'a ImageMeta,
+        centroid_xy_px: [f64; 2],
+        stamp_size: usize,
+        flux_adu: f64,
+        sky_adu: f64,
+    ) -> ForwardPsfSpec<'a> {
+        ForwardPsfSpec {
+            pupil,
+            image_meta: meta,
+            phase_terms: &[],
+            centroid_xy_px,
+            stamp_size,
+            flux_adu,
+            sky_adu,
+        }
+    }
+
+    #[test]
+    fn unaberrated_airy_peak_is_at_stamp_center() {
+        let pupil = unit_pupil();
+        let meta = ImageMeta::c10_1_standard_camera();
+        let mut fft = Fft2D::new(fft_size(&pupil).unwrap()).unwrap();
+        let stamp_size = 15_usize;
+        let c_star = stamp_center(stamp_size);
+        let model = forward_psf(
+            &unaberrated_spec(&pupil, &meta, [c_star, c_star], stamp_size, 1.0, 0.0),
+            &mut fft,
+        )
+        .unwrap();
+        let peak = unique_peak(&model);
+        assert_eq!(peak, (c_star as usize, c_star as usize));
+        assert!(model.iter().all(|&value| value >= -1e-18));
+    }
+
+    #[test]
+    fn flux_and_sky_scale_the_resampled_stamp() {
+        let pupil = unit_pupil();
+        let meta = ImageMeta::c10_1_standard_camera();
+        let mut fft = Fft2D::new(fft_size(&pupil).unwrap()).unwrap();
+        let stamp_size = 15_usize;
+        let c_star = stamp_center(stamp_size);
+        let unit = forward_psf(
+            &unaberrated_spec(&pupil, &meta, [c_star, c_star], stamp_size, 1.0, 0.0),
+            &mut fft,
+        )
+        .unwrap();
+        let scaled = forward_psf(
+            &unaberrated_spec(&pupil, &meta, [c_star, c_star], stamp_size, 3.0, 0.5),
+            &mut fft,
+        )
+        .unwrap();
+        for (unit_value, scaled_value) in unit.iter().zip(scaled.iter()) {
+            assert!((scaled_value - (3.0 * unit_value + 0.5)).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn subpixel_centroid_moves_the_first_moment() {
+        let pupil = unit_pupil();
+        let meta = ImageMeta::c10_1_standard_camera();
+        let mut fft = Fft2D::new(fft_size(&pupil).unwrap()).unwrap();
+        let stamp_size = 15_usize;
+        let c_star = stamp_center(stamp_size);
+        let offset = 0.3;
+        let centered = forward_psf(
+            &unaberrated_spec(&pupil, &meta, [c_star, c_star], stamp_size, 1.0, 0.0),
+            &mut fft,
+        )
+        .unwrap();
+        let shifted = forward_psf(
+            &unaberrated_spec(
+                &pupil,
+                &meta,
+                [c_star + offset, c_star],
+                stamp_size,
+                1.0,
+                0.0,
+            ),
+            &mut fft,
+        )
+        .unwrap();
+        let moment = |stamp: &Array2<f64>| {
+            let mut wx = 0.0;
+            let mut w = 0.0;
+            for row in 0..stamp.nrows() {
+                for column in 0..stamp.ncols() {
+                    let v = stamp[[row, column]].max(0.0);
+                    wx += column as f64 * v;
+                    w += v;
+                }
+            }
+            wx / w
+        };
+        let dx = moment(&shifted) - moment(&centered);
+        assert!(
+            (dx - offset).abs() < 0.05,
+            "first-moment shift {dx}, requested {offset}"
+        );
     }
 }

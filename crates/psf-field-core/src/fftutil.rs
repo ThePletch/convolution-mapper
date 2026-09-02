@@ -9,17 +9,20 @@ use rustfft::{Fft, FftPlanner};
 use crate::error::{ErrorModule, PsfFieldError};
 
 /// Planned 2-D DFT of size `n_fft × n_fft` with reusable scratch.
-/// rustfft's 1-D unnormalized forward transform is applied along rows, then
-/// columns, which is the separable 2-D DFT in C9.6.
+/// rustfft's 1-D unnormalized transform is applied along rows, then columns,
+/// which is the separable 2-D DFT in C9.6. Inverse is the matching unnormalized
+/// IDFT; a forward–inverse pair scales the array by N_f².
 pub struct Fft2D {
     n_fft: usize,
     forward: Arc<dyn Fft<f64>>,
+    inverse: Arc<dyn Fft<f64>>,
     axis_samples: Vec<Complex<f64>>,
     scratch: Vec<Complex<f64>>,
 }
 
 impl Fft2D {
-    /// Plan an even-length transform. `n_fft` is N_f, the padded array side. (C9.3)
+    /// Plan even-length forward and inverse transforms. `n_fft` is N_f, the
+    /// padded array side. (C9.3)
     pub fn new(n_fft: usize) -> Result<Self, PsfFieldError> {
         if n_fft < 2 || n_fft % 2 != 0 {
             return Err(PsfFieldError::input(
@@ -29,10 +32,14 @@ impl Fft2D {
         }
         let mut planner = FftPlanner::<f64>::new();
         let forward = planner.plan_fft_forward(n_fft);
-        let scratch_len = forward.get_inplace_scratch_len();
+        let inverse = planner.plan_fft_inverse(n_fft);
+        let scratch_len = forward
+            .get_inplace_scratch_len()
+            .max(inverse.get_inplace_scratch_len());
         Ok(Self {
             n_fft,
             forward,
+            inverse,
             axis_samples: vec![Complex::new(0.0, 0.0); n_fft],
             scratch: vec![Complex::new(0.0, 0.0); scratch_len],
         })
@@ -47,6 +54,23 @@ impl Fft2D {
     /// U_kl = Σ_{p',q'} P_{p'q'} exp(−2πi (k p' + l q') / N_f).
     /// After this call, DC (zero frequency) is at index (0, 0). (C9.6)
     pub fn forward_dft(&mut self, buffer: &mut Array2<Complex<f64>>) -> Result<(), PsfFieldError> {
+        let plan = Arc::clone(&self.forward);
+        self.transform_axes(buffer, &plan)
+    }
+
+    /// Unnormalized inverse DFT, the adjoint of [`Self::forward_dft`].
+    /// Forward then inverse multiplies every entry by N_f²; the Fourier shift
+    /// divides that factor back out so a zero shift is the identity. (C9.10.1)
+    pub fn inverse_dft(&mut self, buffer: &mut Array2<Complex<f64>>) -> Result<(), PsfFieldError> {
+        let plan = Arc::clone(&self.inverse);
+        self.transform_axes(buffer, &plan)
+    }
+
+    fn transform_axes(
+        &mut self,
+        buffer: &mut Array2<Complex<f64>>,
+        plan: &Arc<dyn Fft<f64>>,
+    ) -> Result<(), PsfFieldError> {
         let n_fft = self.n_fft;
         if buffer.nrows() != n_fft || buffer.ncols() != n_fft {
             return Err(PsfFieldError::input(
@@ -54,29 +78,40 @@ impl Fft2D {
                 "DFT buffer shape must be (n_fft, n_fft)",
             ));
         }
-        // Rows: for each p', FFT over q' (column index, pupil +x).
+        // Rows: for each p', transform over q' (column index, pupil +x).
         for row in 0..n_fft {
             for column in 0..n_fft {
                 self.axis_samples[column] = buffer[[row, column]];
             }
-            self.forward
-                .process_with_scratch(&mut self.axis_samples, &mut self.scratch);
+            plan.process_with_scratch(&mut self.axis_samples, &mut self.scratch);
             for column in 0..n_fft {
                 buffer[[row, column]] = self.axis_samples[column];
             }
         }
-        // Columns: for each l, FFT over p' (row index, pupil +y).
+        // Columns: for each l, transform over p' (row index, pupil +y).
         for column in 0..n_fft {
             for row in 0..n_fft {
                 self.axis_samples[row] = buffer[[row, column]];
             }
-            self.forward
-                .process_with_scratch(&mut self.axis_samples, &mut self.scratch);
+            plan.process_with_scratch(&mut self.axis_samples, &mut self.scratch);
             for row in 0..n_fft {
                 buffer[[row, column]] = self.axis_samples[row];
             }
         }
         Ok(())
+    }
+}
+
+/// DFT frequency bin at index `k` for even length `n`: 0, 1, …, n/2−1, −n/2, …, −1.
+/// This is numpy `fftfreq(n) * n`, the integer convention used by the Fourier-shift
+/// phase. (C9.10.1)
+#[must_use]
+pub fn fftfreq_bin(k: usize, n: usize) -> f64 {
+    let half = n / 2;
+    if k < half {
+        k as f64
+    } else {
+        k as f64 - n as f64
     }
 }
 
@@ -228,6 +263,37 @@ mod tests {
         let twice = fftshift(&shifted);
         assert_eq!(twice, array);
         assert_eq!(fftshift(&array), ifftshift(&array));
+    }
+
+    #[test]
+    fn fftfreq_bin_matches_numpy_integer_convention() {
+        let n = 8_usize;
+        let expected = [0.0, 1.0, 2.0, 3.0, -4.0, -3.0, -2.0, -1.0];
+        for (k, &bin) in expected.iter().enumerate() {
+            assert_eq!(fftfreq_bin(k, n), bin);
+        }
+    }
+
+    #[test]
+    fn inverse_undoes_forward_up_to_n_fft_squared() {
+        let n_fft = 8_usize;
+        let mut fft = Fft2D::new(n_fft).unwrap();
+        let mut original = Array2::from_elem((n_fft, n_fft), Complex::new(0.0, 0.0));
+        original[[1, 2]] = Complex::new(0.5, -0.25);
+        original[[4, 4]] = Complex::new(1.0, 0.0);
+        original[[7, 0]] = Complex::new(0.0, 0.75);
+        let mut buffer = original.clone();
+        fft.forward_dft(&mut buffer).unwrap();
+        fft.inverse_dft(&mut buffer).unwrap();
+        let scale = (n_fft * n_fft) as f64;
+        let mut max_diff = 0.0_f64;
+        for row in 0..n_fft {
+            for column in 0..n_fft {
+                let recovered = buffer[[row, column]] / scale;
+                max_diff = max_diff.max((recovered - original[[row, column]]).norm());
+            }
+        }
+        assert!(max_diff < 1e-14, "round-trip residual {max_diff}");
     }
 
     #[test]

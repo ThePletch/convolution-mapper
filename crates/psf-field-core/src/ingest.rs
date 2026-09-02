@@ -55,6 +55,7 @@ pub fn ingest_session(
 ) -> Result<(Vec<StarRecord>, ImageMeta, PupilSpec), PsfFieldError> {
     let meta = meta.ingest()?;
     let pupil = pupil.ingest()?;
+    crate::resample::oversampling_factor(&meta, &pupil)?;
     if stars.is_empty() {
         return Err(PsfFieldError::input(
             ErrorModule::Boundary,
@@ -133,6 +134,7 @@ pub fn ingest_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{ImageMeta, StarRecord};
     use serde_json::json;
 
     fn valid_meta() -> Value {
@@ -237,5 +239,34 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn session_rejects_insane_sampling() {
+        let mut meta = ingest_image_meta(&valid_meta()).unwrap();
+        meta.pixel_scale_arcsec = 0.01;
+        let pupil = crate::pupil::circular_pupil_spec(128, 512)
+            .ingest()
+            .unwrap();
+        let star: StarRecord = serde_json::from_value(valid_star(15)).unwrap();
+        let err = ingest_session(vec![star], meta, pupil).unwrap_err();
+        assert_eq!(err.code, crate::error::ErrorCode::Input);
+        assert!(err.message.contains("sampling insane"));
+    }
+
+    #[test]
+    fn session_accepts_c10_1_sampling() {
+        let mut meta = ImageMeta::c10_1_standard_camera();
+        meta.exposure_id = "exp1".to_string();
+        meta.session_id = "sess1".to_string();
+        let meta = meta.ingest().unwrap();
+        let pupil = crate::pupil::circular_pupil_spec(256, 1024)
+            .ingest()
+            .unwrap();
+        let mut star = valid_star(31);
+        star["source_xy_px"] = json!([255.5, 255.5]);
+        star["centroid_xy_px"] = json!([15.0, 15.0]);
+        let star: StarRecord = serde_json::from_value(star).unwrap();
+        ingest_session(vec![star], meta, pupil).unwrap();
     }
 }
